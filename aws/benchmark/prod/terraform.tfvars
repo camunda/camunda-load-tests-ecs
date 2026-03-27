@@ -1,0 +1,2 @@
+# Prod environment
+environment = "prod"

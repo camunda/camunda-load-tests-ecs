@@ -1,0 +1,226 @@
+---
+name: Weekly ECS Benchmark (Scheduled)
+
+on:
+  schedule:
+    # Every Monday at 06:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - prod
+          - dev
+        default: 'prod'
+      skip_destroy_previous:
+        description: 'Skip destroying the previous weeks benchmark'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  AWS_REGION: eu-west-1
+  ENVIRONMENT: ${{ inputs.environment || 'prod' }}
+
+jobs:
+  prepare:
+    name: Resolve images and compute benchmark names
+    runs-on: ubuntu-latest
+    outputs:
+      current_benchmark_name: ${{ steps.names.outputs.current }}
+      previous_benchmark_name: ${{ steps.names.outputs.previous }}
+      pinned_camunda_image: ${{ steps.pin_camunda.outputs.pinned_image }}
+      pinned_starter_image: ${{ steps.pin_starter.outputs.pinned_image }}
+      pinned_worker_image: ${{ steps.pin_worker.outputs.pinned_image }}
+
+    steps:
+      - name: Import secrets from Vault
+        id: secrets
+        uses: hashicorp/vault-action@2c5827061f1ad91ca97897d6257ebe638e033699
+        with:
+          url: ${{ secrets.VAULT_ADDR }}
+          method: approle
+          roleId: ${{ secrets.VAULT_ROLE_ID }}
+          secretId: ${{ secrets.VAULT_SECRET_ID }}
+          secrets: |
+            secret/data/products/zeebe/ci/common AWS_CORE_FOUNDATION_ACCESS_KEY | AWS_ACCESS_KEY_ID;
+            secret/data/products/zeebe/ci/common AWS_CORE_FOUNDATION_SECRET_KEY | AWS_SECRET_ACCESS_KEY;
+
+      - name: Configure AWS CLI
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Compute current and find previous benchmark name
+        id: names
+        run: |
+          # Current benchmark: today's date
+          CURRENT_DATE=$(date -u +%Y-%m-%d)
+          CURRENT="weekly-${CURRENT_DATE}"
+          echo "current=${CURRENT}" >> "$GITHUB_OUTPUT"
+          echo "📅 Current benchmark: ${CURRENT}"
+
+          # Previous benchmark: find from currently running ECS services.
+          # This is more reliable than S3 state files because it reflects
+          # what's actually running — avoids trying to destroy already-gone
+          # benchmarks or missing partially-torn-down ones.
+          ENV="${{ env.ENVIRONMENT }}"
+          if [ "$ENV" = "dev" ]; then
+            ECS_CLUSTER="camunda-dev-cluster"
+            SERVICE_PREFIX="dev-weekly-"
+          else
+            ECS_CLUSTER="camunda-cluster"
+            SERVICE_PREFIX="weekly-"
+          fi
+
+          # List all ECS services, filter for weekly benchmark orchestration-cluster services
+          # Service names follow: <prefix>-oc-orchestration-cluster
+          # e.g., weekly-2026-03-10-oc-orchestration-cluster (prod)
+          #       dev-weekly-2026-03-10-oc-orchestration-cluster (dev)
+          CURRENT_SERVICE="${SERVICE_PREFIX}${CURRENT_DATE}-oc-orchestration-cluster"
+
+          PREVIOUS=$(aws ecs list-services \
+              --cluster "$ECS_CLUSTER" \
+              --query "serviceArns" --output text \
+            | tr '\t' '\n' \
+            | sed 's|.*/||' \
+            | grep "^${SERVICE_PREFIX}.*-oc-orchestration-cluster$" \
+            | grep -v "^${CURRENT_SERVICE}$" \
+            | sed "s/-oc-orchestration-cluster$//" \
+            | sed "s/^dev-//" \
+            | sort \
+            | tail -n 1 || true)
+
+          if [ -n "$PREVIOUS" ]; then
+            echo "previous=${PREVIOUS}" >> "$GITHUB_OUTPUT"
+            echo "📅 Previous benchmark (from ECS): ${PREVIOUS}"
+          else
+            echo "previous=" >> "$GITHUB_OUTPUT"
+            echo "⚠️ No previous weekly benchmark found running in ECS cluster ${ECS_CLUSTER}"
+          fi
+
+      - name: Pin camunda/camunda:SNAPSHOT image
+        id: pin_camunda
+        run: |
+          # Resolve the SNAPSHOT tag to a pinned digest
+          DIGEST=$(docker manifest inspect camunda/camunda:SNAPSHOT -v 2>/dev/null \
+            | jq -r 'if type == "array" then .[0].Descriptor.digest else .Descriptor.digest // empty end' 2>/dev/null || true)
+
+          if [ -n "$DIGEST" ] && [ "$DIGEST" != "null" ]; then
+            PINNED="camunda/camunda@${DIGEST}"
+            echo "✅ Pinned camunda image: ${PINNED}"
+          else
+            # Fallback: use the tag as-is (still better than failing)
+            PINNED="camunda/camunda:SNAPSHOT"
+            echo "⚠️ Could not resolve digest, using tag directly: ${PINNED}"
+          fi
+          echo "pinned_image=${PINNED}" >> "$GITHUB_OUTPUT"
+
+      - name: Pin starter:SNAPSHOT image
+        id: pin_starter
+        run: |
+          DIGEST=$(docker manifest inspect registry.camunda.cloud/team-zeebe/starter:SNAPSHOT -v 2>/dev/null \
+            | jq -r 'if type == "array" then .[0].Descriptor.digest else .Descriptor.digest // empty end' 2>/dev/null || true)
+
+          if [ -n "$DIGEST" ] && [ "$DIGEST" != "null" ]; then
+            PINNED="registry.camunda.cloud/team-zeebe/starter@${DIGEST}"
+            echo "✅ Pinned starter image: ${PINNED}"
+          else
+            PINNED="registry.camunda.cloud/team-zeebe/starter:SNAPSHOT"
+            echo "⚠️ Could not resolve digest, using tag directly: ${PINNED}"
+          fi
+          echo "pinned_image=${PINNED}" >> "$GITHUB_OUTPUT"
+
+      - name: Pin worker:SNAPSHOT image
+        id: pin_worker
+        run: |
+          DIGEST=$(docker manifest inspect registry.camunda.cloud/team-zeebe/worker:SNAPSHOT -v 2>/dev/null \
+            | jq -r 'if type == "array" then .[0].Descriptor.digest else .Descriptor.digest // empty end' 2>/dev/null || true)
+
+          if [ -n "$DIGEST" ] && [ "$DIGEST" != "null" ]; then
+            PINNED="registry.camunda.cloud/team-zeebe/worker@${DIGEST}"
+            echo "✅ Pinned worker image: ${PINNED}"
+          else
+            PINNED="registry.camunda.cloud/team-zeebe/worker:SNAPSHOT"
+            echo "⚠️ Could not resolve digest, using tag directly: ${PINNED}"
+          fi
+          echo "pinned_image=${PINNED}" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        run: |
+          echo "## 📋 Weekly Benchmark Plan" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Item | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Current benchmark | \`${{ steps.names.outputs.current }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          PREV="${{ steps.names.outputs.previous }}"
+          if [ -n "$PREV" ]; then
+            echo "| Previous benchmark | \`${PREV}\` |" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "| Previous benchmark | _(none found)_ |" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "| Camunda image | \`${{ steps.pin_camunda.outputs.pinned_image }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Starter image | \`${{ steps.pin_starter.outputs.pinned_image }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Worker image | \`${{ steps.pin_worker.outputs.pinned_image }}\` |" >> "$GITHUB_STEP_SUMMARY"
+
+  destroy-previous:
+    name: Destroy previous week's benchmark
+    needs: prepare
+    if: ${{ inputs.skip_destroy_previous != true && needs.prepare.outputs.previous_benchmark_name != '' }}
+    uses: ./.github/workflows/ecs-benchmark-deploy.yml
+    with:
+      environment: ${{ inputs.environment || 'prod' }}
+      benchmark_name: ${{ needs.prepare.outputs.previous_benchmark_name }}
+      destroy_only: true
+    secrets: inherit
+
+  deploy-current:
+    name: Deploy current week's benchmark
+    needs: [prepare, destroy-previous]
+    # Run even if destroy-previous was skipped (e.g., first run)
+    if: ${{ always() && needs.prepare.result == 'success' && (needs.destroy-previous.result == 'success' || needs.destroy-previous.result == 'skipped') }}
+    uses: ./.github/workflows/ecs-benchmark-deploy.yml
+    with:
+      environment: ${{ inputs.environment || 'prod' }}
+      benchmark_name: ${{ needs.prepare.outputs.current_benchmark_name }}
+      docker_image: ${{ needs.prepare.outputs.pinned_camunda_image }}
+      starter_image: ${{ needs.prepare.outputs.pinned_starter_image }}
+      worker_image: ${{ needs.prepare.outputs.pinned_worker_image }}
+      destroy_existing: false
+      deploy_load_test_only: false
+      force_new_deployment: false
+    secrets: inherit
+
+  store-active-benchmark:
+    name: Store active benchmark name in SSM
+    needs: [prepare, deploy-current]
+    if: ${{ needs.deploy-current.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Import secrets from Vault
+        id: secrets
+        uses: hashicorp/vault-action@2c5827061f1ad91ca97897d6257ebe638e033699
+        with:
+          url: ${{ secrets.VAULT_ADDR }}
+          method: approle
+          roleId: ${{ secrets.VAULT_ROLE_ID }}
+          secretId: ${{ secrets.VAULT_SECRET_ID }}
+          secrets: |
+            secret/data/products/zeebe/ci/common AWS_CORE_FOUNDATION_ACCESS_KEY | AWS_ACCESS_KEY_ID;
+            secret/data/products/zeebe/ci/common AWS_CORE_FOUNDATION_SECRET_KEY | AWS_SECRET_ACCESS_KEY;
+
+      - name: Configure AWS CLI
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Store active benchmark name in SSM
+        run: |
+          aws ssm put-parameter \
+            --name "/benchmarks/${{ env.ENVIRONMENT }}/active-weekly-benchmark" \
+            --value "${{ needs.prepare.outputs.current_benchmark_name }}" \
+            --type String \
+            --overwrite
+          echo "✅ Stored active benchmark: ${{ needs.prepare.outputs.current_benchmark_name }}"

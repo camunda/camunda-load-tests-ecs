@@ -1,0 +1,99 @@
+---
+name: Setup Stable Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - prod
+          - dev
+        default: 'prod'
+      destroy_existing:
+        description: 'Destroy existing stable infrastructure before deploying'
+        required: false
+        type: boolean
+        default: false
+#   pull_request:
+#     paths:
+#       - 'aws/stable/**'
+#       - '.github/workflows/setup-stable-infrastructure.yml'
+
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Target environment (dev or prod)'
+        required: false
+        type: string
+        default: 'prod'
+      destroy_existing:
+        description: 'Destroy existing stable infrastructure'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  AWS_REGION: eu-west-1
+  ENVIRONMENT: ${{ inputs.environment || 'prod' }}
+  DESTROY_EXISTING: ${{ inputs.destroy_existing || false }}
+
+jobs:
+  setup-stable:
+    name: Setup Stable Infrastructure
+    runs-on: ubuntu-latest
+    env:
+      CI: true  # Enable auto-approve for Makefiles
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Import secrets from Vault
+        id: secrets
+        uses: hashicorp/vault-action@2c5827061f1ad91ca97897d6257ebe638e033699
+        with:
+          url: ${{ secrets.VAULT_ADDR }}
+          method: approle
+          roleId: ${{ secrets.VAULT_ROLE_ID }}
+          secretId: ${{ secrets.VAULT_SECRET_ID }}
+          exportToken: true
+          secrets: |
+            secret/data/products/zeebe/ci/common AWS_CORE_FOUNDATION_ACCESS_KEY | AWS_ACCESS_KEY_ID;
+            secret/data/products/zeebe/ci/common AWS_CORE_FOUNDATION_SECRET_KEY | AWS_SECRET_ACCESS_KEY;
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.7.0"
+
+      - name: Configure AWS CLI
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Destroy existing stable infrastructure (conditional)
+        if: ${{ env.DESTROY_EXISTING == 'true' }}
+        working-directory: ./aws/stable/${{ env.ENVIRONMENT }}
+        env:
+          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+        run: make destroy
+
+      - name: Deploy stable infrastructure
+        working-directory: ./aws/stable/${{ env.ENVIRONMENT }}
+        env:
+          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+        run: make deploy
+
+      - name: Output stable infrastructure info
+        working-directory: ./aws/stable/${{ env.ENVIRONMENT }}
+        run: |
+          echo "🏗️ Stable infrastructure setup completed successfully!"
+          echo "🌍 Environment: ${{ env.ENVIRONMENT }}"
+          echo ""
+          echo "📊 Infrastructure Outputs:"
+          terraform -chdir=.. output 2>/dev/null || echo "No outputs available"
+          echo ""
+          echo "✅ Ready for benchmark and load test deployments!"

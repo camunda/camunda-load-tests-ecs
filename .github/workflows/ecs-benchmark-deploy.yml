@@ -1,0 +1,224 @@
+---
+name: Deploy/Destroy ECS Benchmark and Load Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - prod
+          - dev
+        default: 'prod'
+      docker_image:
+        description: |
+          Docker image URI (e.g., camunda/camunda:8.7.0 
+          or with a custom repository)
+        required: false
+        type: string
+        default: 'camunda/camunda:SNAPSHOT'
+      starter_image:
+        description: 'Starter (load generator) image URI'
+        required: false
+        type: string
+        default: 'registry.camunda.cloud/team-zeebe/starter:SNAPSHOT'
+      worker_image:
+        description: 'Worker image URI'
+        required: false
+        type: string
+        default: 'registry.camunda.cloud/team-zeebe/worker:SNAPSHOT'
+      destroy_existing:
+        description: |
+          Destroy existing benchmark infrastructure before deploying
+        required: false
+        type: boolean
+        default: false
+      benchmark_name:
+        description: 'Benchmark name (e.g., weekly-2026-03-17, max 20 chars for prod, 16 for dev). Overrides benchmark_number when set.'
+        required: false
+        type: string
+        default: ''
+      benchmark_number:
+        description: 'Benchmark number (for benchmark1, benchmark2, etc.). Ignored when benchmark_name is set.'
+        required: false
+        type: number
+        default: 1
+      deploy_load_test_only:
+        description: 'Only redeploy load test (skip benchmark infrastructure)'
+        required: false
+        type: boolean
+        default: false
+      force_new_deployment:
+        description: 'Force new deployment of load test tasks'
+        required: false
+        type: boolean
+        default: false
+      destroy_only:
+        description: 'Only destroy infrastructure (do not deploy). Used by weekly rotation.'
+        required: false
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Target environment (dev or prod)'
+        required: false
+        type: string
+        default: 'prod'
+      docker_image:
+        description: 'Docker image URI'
+        required: false
+        type: string
+        default: 'camunda/camunda:SNAPSHOT'
+      starter_image:
+        description: 'Starter (load generator) image URI'
+        required: false
+        type: string
+        default: 'registry.camunda.cloud/team-zeebe/starter:SNAPSHOT'
+      worker_image:
+        description: 'Worker image URI'
+        required: false
+        type: string
+        default: 'registry.camunda.cloud/team-zeebe/worker:SNAPSHOT'
+      destroy_existing:
+        description: 'Destroy existing benchmark infrastructure'
+        required: false
+        type: boolean
+        default: false
+      benchmark_name:
+        description: 'Benchmark name (e.g., weekly-2026-03-17, max 20 chars for prod, 16 for dev). Overrides benchmark_number when set.'
+        required: false
+        type: string
+        default: ''
+      benchmark_number:
+        description: 'Benchmark number'
+        required: false
+        type: number
+        default: 1
+      deploy_load_test_only:
+        description: 'Only redeploy load test'
+        required: false
+        type: boolean
+        default: false     
+      force_new_deployment:
+        description: 'Force new deployment of load test tasks'
+        required: false
+        type: boolean
+        default: false
+      destroy_only:
+        description: 'Only destroy infrastructure (do not deploy). Used by weekly rotation.'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  AWS_REGION: eu-west-1
+  ENVIRONMENT: ${{ inputs.environment || 'prod' }}
+
+jobs:
+  deploy:
+    name: Deploy Benchmark and Load Test
+    runs-on: ubuntu-latest
+    env:
+      CI: true  # Enable auto-approve for Makefiles
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Import secrets from Vault
+        id: secrets
+        uses: hashicorp/vault-action@2c5827061f1ad91ca97897d6257ebe638e033699
+        with:
+          url: ${{ secrets.VAULT_ADDR }}
+          method: approle
+          roleId: ${{ secrets.VAULT_ROLE_ID }}
+          secretId: ${{ secrets.VAULT_SECRET_ID }}
+          secrets: |
+            secret/data/products/zeebe/ci/common AWS_CORE_FOUNDATION_ACCESS_KEY | AWS_ACCESS_KEY_ID;
+            secret/data/products/zeebe/ci/common AWS_CORE_FOUNDATION_SECRET_KEY | AWS_SECRET_ACCESS_KEY;
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.7.0"
+
+      - name: Configure AWS CLI
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set benchmark identifier
+        id: benchmark_id
+        run: |
+          if [ -n "${{ inputs.benchmark_name }}" ]; then
+            echo "make_arg=BENCHMARK_NAME=${{ inputs.benchmark_name }}" >> "$GITHUB_OUTPUT"
+            echo "display_name=${{ inputs.benchmark_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "make_arg=BENCHMARK_NUMBER=${{ inputs.benchmark_number }}" >> "$GITHUB_OUTPUT"
+            echo "display_name=benchmark${{ inputs.benchmark_number }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate benchmark name length
+        run: |
+          NAME="${{ steps.benchmark_id.outputs.display_name }}"
+          # The orchestration-cluster module creates target groups named
+          # "<PREFIX>-oc-tg-26500". AWS limits target group names to 32 chars.
+          # Longest suffix is "-oc-tg-26500" (12 chars), leaving 20 chars for PREFIX.
+          # In prod: PREFIX = BENCHMARK_NAME
+          # In dev:  PREFIX = dev-BENCHMARK_NAME (adds 4 chars)
+          MAX_PREFIX_LEN=20
+          if [ "${{ env.ENVIRONMENT }}" = "dev" ]; then
+            PREFIX="dev-${NAME}"
+          else
+            PREFIX="${NAME}"
+          fi
+          if [ ${#PREFIX} -gt $MAX_PREFIX_LEN ]; then
+            echo "::error::PREFIX '${PREFIX}' is ${#PREFIX} chars, exceeds the ${MAX_PREFIX_LEN} char limit."
+            echo "AWS target group names are limited to 32 characters."
+            echo "The longest derived name would be: ${PREFIX}-oc-tg-26500 ($((${#PREFIX} + 12)) chars)"
+            exit 1
+          fi
+          echo "✅ PREFIX '${PREFIX}' (${#PREFIX} chars) is within the ${MAX_PREFIX_LEN} char limit"
+
+      - name: Destroy load test (conditional)
+        if: ${{ inputs.destroy_existing == true || inputs.destroy_only == true }}
+        working-directory: ./aws/load_test/${{ env.ENVIRONMENT }}
+        run: make destroy ${{ steps.benchmark_id.outputs.make_arg }}
+        continue-on-error: ${{ inputs.destroy_only == true }}
+
+      - name: Destroy existing benchmark (conditional)
+        if: ${{ (inputs.destroy_existing == true || inputs.destroy_only == true) && inputs.deploy_load_test_only == false }}
+        working-directory: ./aws/benchmark/${{ env.ENVIRONMENT }}
+        run: make destroy-with-bucket ${{ steps.benchmark_id.outputs.make_arg }}
+        continue-on-error: ${{ inputs.destroy_only == true }}
+
+      - name: Deploy benchmark infrastructure
+        if: ${{ inputs.deploy_load_test_only == false && inputs.destroy_only == false }}
+        working-directory: ./aws/benchmark/${{ env.ENVIRONMENT }}
+        run: make deploy ${{ steps.benchmark_id.outputs.make_arg }} CAMUNDA_IMAGE="${{ inputs.docker_image }}"
+
+      - name: Deploy load test
+        if: ${{ inputs.destroy_only == false }}
+        working-directory: ./aws/load_test/${{ env.ENVIRONMENT }}
+        run: |
+          make deploy ${{ steps.benchmark_id.outputs.make_arg }} \
+            FORCE_NEW_DEPLOYMENT=${{ inputs.force_new_deployment }} \
+            STARTER_IMAGE="${{ inputs.starter_image }}" \
+            WORKER_IMAGE="${{ inputs.worker_image }}"
+
+      - name: Output deployment info
+        if: ${{ inputs.destroy_only == false }}
+        working-directory: ./aws/benchmark/${{ env.ENVIRONMENT }}
+        run: |
+          echo "🚀 Deployment completed successfully!"
+          if [ "${{ inputs.deploy_load_test_only }}" = "true" ]; then
+            echo "⚡ Load Test Only: ${{ steps.benchmark_id.outputs.display_name }} load test redeployed"
+          else
+            echo "📦 Docker Image: ${{ inputs.docker_image || 'camunda/camunda:SNAPSHOT' }}"
+            echo "🎯 Benchmark: ${{ steps.benchmark_id.outputs.display_name }}"
+            echo "⚡ Load Test: ${{ steps.benchmark_id.outputs.display_name }}-lt"
+            terraform -chdir=.. output 2>/dev/null || echo "No outputs available"
+          fi
