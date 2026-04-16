@@ -35,4 +35,8 @@ provider "vault" {
   # VAULT_ADDR and VAULT_TOKEN are expected from the environment.
   # Locally: export VAULT_ADDR via .envrc, authenticate with `vault login -method=oidc`
   # CI:      hashicorp/vault-action sets both automatically
+
+  # Skip creating a child token – the CI AppRole token does not have
+  # auth/token/create permissions, so use the token directly.
+  skip_child_token = true
 }

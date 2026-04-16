@@ -22,6 +22,11 @@ module "vpc" {
   single_nat_gateway     = true
   one_nat_gateway_per_az = false
 
+  # The default route table is not associated with any subnets.
+  # infra-core manages VPN gateway route propagation on it externally,
+  # so we must not manage it here to avoid cross-state drift.
+  manage_default_route_table = false
+
   # Enable DNS support for EFS
   enable_dns_hostnames = true
   enable_dns_support   = true
