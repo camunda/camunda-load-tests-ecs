@@ -49,10 +49,11 @@ resource "aws_ecs_task_definition" "prometheus" {
     },
     {
       name      = "prometheus"
-      image     = "registry.camunda.cloud/team-zeebe/prometheus:v3.7.3"
-      repositorycredentials: {
-        credentialsparameter: data.terraform_remote_state.stable.outputs.registry_credentials_arn
-      },
+      image     = "prom/prometheus:v3.11.2"
+      # Uncomment below if using an image from internal registry
+      #repositorycredentials: {
+      #  credentialsparameter: data.terraform_remote_state.stable.outputs.registry_credentials_arn
+      #},
       essential = true
       dependsOn = [
         { containerName = "discovery", condition = "START" }
