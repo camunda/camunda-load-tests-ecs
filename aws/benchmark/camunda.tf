@@ -27,8 +27,8 @@ resource "aws_secretsmanager_secret_version" "registry_credentials" {
 
 module "orchestration_cluster" {
   # clickable link
-  # https://github.com/camunda/camunda-deployment-references/commit/d15e9e10b97b52052e735ab21dc449dbfe681170
-  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/orchestration-cluster?ref=d15e9e10b97b52052e735ab21dc449dbfe681170"
+  # https://github.com/camunda/camunda-deployment-references/commit/11081f81ab26396b9a0caa41c8049735777c4e20
+  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/orchestration-cluster?ref=11081f81ab26396b9a0caa41c8049735777c4e20"
 
   prefix              = "${var.prefix}-oc" # s3 bucket name in workflow destroy step must be updated as well
   ecs_cluster_id      = data.terraform_remote_state.stable.outputs.ecs_cluster_id
@@ -36,8 +36,6 @@ module "orchestration_cluster" {
   vpc_private_subnets = data.terraform_remote_state.stable.outputs.vpc_private_subnets
   aws_region          = "eu-west-1"
 
-  efs_throughput_mode                 = "provisioned"
-  efs_provisioned_throughput_in_mibps = 60
   nlb_arn                             = aws_lb.grpc.arn
   ecs_task_execution_role_arn         = aws_iam_role.ecs_task_execution.arn
   alb_listener_http_webapp_arn        = aws_lb_listener.http_webapp.arn
