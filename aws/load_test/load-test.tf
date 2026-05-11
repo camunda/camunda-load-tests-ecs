@@ -40,7 +40,17 @@ resource "aws_ecs_task_definition" "starter" {
       },
       essential = true
       environment = [
-        { name = "JDK_JAVA_OPTIONS", value = "-Dconfig.override_with_env_vars=true -Dapp.monitorDataAvailability=false -Dapp.brokerUrl=grpc://${var.camunda_host}:26500 -Dapp.brokerRestUrl=http://${var.camunda_host}:8080 -Dapp.preferRest=false -Dapp.starter.rate=150 -Dapp.starter.durationLimit=0 -Dzeebe.client.requestTimeout=62000 -Dapp.starter.processId=benchmark -Dapp.starter.bpmnXmlPath=bpmn/one_task.bpmn -Dapp.starter.businessKey=businessKey -Dapp.starter.payloadPath=bpmn/typical_payload.json -XX:+HeapDumpOnOutOfMemoryError" },
+        { name = "CAMUNDA_CLIENT_GRPC_ADDRESS", value = "http://${var.camunda_host}:26500" },
+        { name = "CAMUNDA_CLIENT_REST_ADDRESS", value = "http://${var.camunda_host}:8080" },
+        { name = "CAMUNDA_CLIENT_PREFER_REST_OVER_GRPC", value = "false" },
+        { name = "LOAD_TESTER_MONITOR_DATA_AVAILABILITY", value = "false" },
+        { name = "LOAD_TESTER_STARTER_RATE", value = "150" },
+        { name = "LOAD_TESTER_STARTER_DURATION_LIMIT", value = "0" },
+        { name = "LOAD_TESTER_STARTER_PROCESS_ID", value = "benchmark" },
+        { name = "LOAD_TESTER_STARTER_BPMN_XML_PATH", value = "bpmn/one_task.bpmn" },
+        { name = "LOAD_TESTER_STARTER_BUSINESS_KEY", value = "businessKey" },
+        { name = "LOAD_TESTER_STARTER_PAYLOAD_PATH", value = "bpmn/typical_payload.json" },
+        { name = "JDK_JAVA_OPTIONS", value = "-XX:+HeapDumpOnOutOfMemoryError" },
         { name = "LOG_LEVEL", value = "WARN" }
       ]
       portMappings = [
@@ -99,7 +109,18 @@ resource "aws_ecs_task_definition" "worker" {
       },
       essential = true
       environment = [
-        { name = "JDK_JAVA_OPTIONS", value = "-Dconfig.override_with_env_vars=true  -Dapp.brokerUrl=grpc://${var.camunda_host}:26500 -Dapp.brokerRestUrl=http://${var.camunda_host}:8080 -Dapp.preferRest=false -Dzeebe.client.requestTimeout=62000 -Dapp.worker.capacity=60 -Dapp.worker.threads=10 -Dapp.worker.pollingDelay=1ms -Dapp.worker.completionDelay=50ms -Dapp.worker.workerName=worker -Dapp.worker.jobType=benchmark-task -Dapp.worker.payloadPath=bpmn/typical_payload.json -XX:+HeapDumpOnOutOfMemoryError" },
+        { name = "SPRING_PROFILES_ACTIVE", value = "worker" },
+        { name = "CAMUNDA_CLIENT_GRPC_ADDRESS", value = "http://${var.camunda_host}:26500" },
+        { name = "CAMUNDA_CLIENT_REST_ADDRESS", value = "http://${var.camunda_host}:8080" },
+        { name = "CAMUNDA_CLIENT_PREFER_REST_OVER_GRPC", value = "false" },
+        { name = "CAMUNDA_CLIENT_WORKER_DEFAULTS_MAX_JOBS_ACTIVE", value = "60" },
+        { name = "CAMUNDA_CLIENT_EXECUTION_THREADS", value = "10" },
+        { name = "CAMUNDA_CLIENT_WORKER_DEFAULTS_POLL_INTERVAL", value = "1ms" },
+        { name = "LOAD_TESTER_WORKER_COMPLETION_DELAY", value = "50ms" },
+        { name = "CAMUNDA_CLIENT_WORKER_DEFAULTS_NAME", value = "worker" },
+        { name = "CAMUNDA_CLIENT_WORKER_DEFAULTS_TYPE", value = "benchmark-task" },
+        { name = "LOAD_TESTER_WORKER_PAYLOAD_PATH", value = "bpmn/typical_payload.json" },
+        { name = "JDK_JAVA_OPTIONS", value = "-XX:+HeapDumpOnOutOfMemoryError" },
         { name = "LOG_LEVEL", value = "INFO" }
       ]
       portMappings = [
