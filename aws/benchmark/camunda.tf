@@ -36,9 +36,8 @@ module "orchestration_cluster" {
   vpc_private_subnets = data.terraform_remote_state.stable.outputs.vpc_private_subnets
   aws_region          = "eu-west-1"
 
-  # Uncomment below to use provisioned throughput mode, default is elastic mode. 
-  # efs_throughput_mode                 = "provisioned"
-  # efs_provisioned_throughput_in_mibps = 60
+  efs_throughput_mode                 = "provisioned"
+  efs_provisioned_throughput_in_mibps = 60
 
   nlb_arn                             = aws_lb.grpc.arn
   ecs_task_execution_role_arn         = aws_iam_role.ecs_task_execution.arn
