@@ -16,7 +16,7 @@ terraform {
 }
 
 provider "aws" {
-  region = "eu-west-1"
+  region = var.region
 
   default_tags {
     tags = {
@@ -28,7 +28,10 @@ provider "aws" {
 }
 
 locals {
-  stable_state_key = "stable/${var.environment}/terraform.tfstate"
+  # stable_state_key overrides the default dev/prod-derived key — used by the
+  # us-east-1 (dual-region secondary) monitoring instance, whose aws/stable
+  # state doesn't follow the dev/prod naming (see aws/stable/us-east-1).
+  stable_state_key = var.stable_state_key != "" ? var.stable_state_key : "stable/${var.environment}/terraform.tfstate"
 }
 
 # we're consuming the remote stable state for the VPC, security groups, etc.
@@ -37,6 +40,18 @@ data "terraform_remote_state" "stable" {
   config = {
     bucket = "zeebe-terraform-states"
     key    = local.stable_state_key
+    region = "eu-west-1"
+  }
+}
+
+# Dual-region: the primary instance reads the secondary's monitoring state to
+# find its Prometheus internal NLB DNS name for federation. Empty by default.
+data "terraform_remote_state" "federation_peer_monitoring" {
+  count   = var.federation_peer_monitoring_state_key != "" ? 1 : 0
+  backend = "s3"
+  config = {
+    bucket = "zeebe-terraform-states"
+    key    = var.federation_peer_monitoring_state_key
     region = "eu-west-1"
   }
 }

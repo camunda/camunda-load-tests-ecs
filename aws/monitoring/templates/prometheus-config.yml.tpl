@@ -13,4 +13,16 @@ scrape_configs:
       - files:
           - /etc/prometheus/targets/benchmarks.json
         refresh_interval: 30s
+%{ if length(federate_targets) > 0 ~}
+
+  # Dual-region: pull the secondary region's already-scraped metrics via
+  # federation instead of scraping its brokers directly cross-region.
+  - job_name: 'federate-secondary'
+    honor_labels: true
+    metrics_path: /federate
+    params:
+      'match[]': ['{job="core"}']
+    static_configs:
+      - targets: ${jsonencode(federate_targets)}
+%{ endif ~}
 

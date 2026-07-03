@@ -20,6 +20,8 @@ Deploy order: `stable` → `benchmark` → `monitoring` → `load_test`
 | dev  | `stable/dev/terraform.tfstate`    | `dev-benchmark1`, `dev-monitoring`, `dev-load_test1` |
 | prod | `stable/prod/terraform.tfstate`   | `benchmark1`, `monitoring`, `load_test1`             |
 
+There's also an `aws/dual-region` module (three chained states: `vpc` → `infra` → `app`) for a dual-region Camunda cluster spanning eu-west-1 (reusing `stable/prod` + the existing `monitoring/prod` Prometheus) and us-east-1 (a dedicated `aws/stable/us-east-1` + `aws/monitoring/us-east-1` pair). See the README's "aws/dual-region" section for the deploy order.
+
 
 # Modules
 There are different modules:

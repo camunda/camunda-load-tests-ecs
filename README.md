@@ -66,12 +66,13 @@ cd aws/stable/prod && make plan     # plan prod
 cd aws/stable/prod && make apply    # apply prod
 ```
 
-| Env | VPC CIDR | State key |
-|-----|----------|-----------|  
-| dev | `10.52.0.0/16` | `stable/dev/terraform.tfstate` |
-| prod | `10.50.0.0/16` | `stable/prod/terraform.tfstate` |
+| Env | Region | VPC CIDR | State key |
+|-----|--------|----------|-----------|
+| dev | eu-west-1 | `10.52.0.0/16` | `stable/dev/terraform.tfstate` |
+| prod | eu-west-1 | `10.50.0.0/16` | `stable/prod/terraform.tfstate` |
+| us-east-1 | us-east-1 | `10.60.0.0/16` | `stable/us-east-1/terraform.tfstate` |
 
-Per-environment config is in `aws/stable/{dev,prod}/terraform.tfvars`. Shared make targets are in `aws/stable/shared.mk`.
+Per-environment config is in `aws/stable/{dev,prod,us-east-1}/terraform.tfvars`. Shared make targets are in `aws/stable/shared.mk`. The `us-east-1` environment exists solely to give the [dual-region setup](#awsdual-region) a second region's VPC/ECS cluster to BYO — it isn't part of the normal single-region dev/prod flow.
 
 ### aws/benchmark
 
@@ -125,6 +126,31 @@ It can also be triggered manually via `workflow_dispatch`.
 #### Monitoring / Prometheus discovery
 
 Prometheus discovers benchmark targets **dynamically** via a Cloud Map discovery sidecar — no hardcoded DNS records in the monitoring stack. When a benchmark is deployed or destroyed, Prometheus picks up the change automatically within ~30 seconds.
+
+### aws/dual-region
+
+A dual-region Camunda cluster (4 brokers, 2 per region, replication factor 2, 4 partitions, zone-aware) spanning **eu-west-1** (primary) and **us-east-1** (secondary, simulating a far region). Built from the [camunda-deployment-references ecs-dual-region-fargate](https://github.com/camunda/camunda-deployment-references/tree/main/aws/containers/ecs-dual-region-fargate) reference architecture: three chained states (`vpc` → `infra` → `app`), each managing both regions in a single apply via two AWS provider aliases.
+
+It reuses the existing `aws/stable` VPCs instead of creating its own (`byo_vpc = true`): region_0 from `aws/stable/dev`, region_1 from `aws/stable/us-east-1`. This means the eu-west-1 side lands in the same VPC as the existing `aws/monitoring` Prometheus, so it's discovered automatically. Only a `dev` instance exists — this is one dedicated, expensive test cluster, not meant to run in dev and prod simultaneously. `cluster_name = "dev-camunda-dr"` (must keep the `dev-` prefix: the monitoring discovery sidecar filters Cloud Map namespaces by `dev-*`/non-`dev-*`, so `aws/monitoring/us-east-1` is also pinned to `environment = "dev"` to match).
+
+Deploy order (each must finish before the next):
+
+```bash
+cd aws/stable/dev        && make deploy   # if not already applied
+cd aws/stable/us-east-1  && make deploy
+cd aws/dual-region/vpc/dev   && make deploy   # cross-region VPC peering
+cd aws/dual-region/infra/dev && make deploy   # Aurora Global, ECS clusters, LBs (~15-20 min)
+cd aws/dual-region/app/dev   && make deploy   # Camunda brokers (~15-20 min for first cross-region Raft quorum)
+```
+
+Monitoring: the primary (`aws/monitoring/dev`) discovers region_0 brokers the normal way (same VPC, Cloud Map). Region_1 gets its own Prometheus (`aws/monitoring/us-east-1`) that discovers region_1 brokers locally; the primary federates it over the VPC peering connection via an internal NLB (Cloud Map DNS doesn't resolve cross-region). Deploy `aws/monitoring/us-east-1` before (re-)applying `aws/monitoring/dev` so the federation target exists.
+
+```bash
+cd aws/monitoring/us-east-1 && make deploy
+cd aws/monitoring/dev       && make deploy   # picks up the federation job
+```
+
+See `aws/dual-region/{vpc,infra,app}/README.md` (from the reference) for the full architecture, and each root's `terraform.tfvars` for the actual settings used here (sizing, BYO state keys, federation CIDRs).
 
 ### Troubleshooting
 

@@ -1,0 +1,5 @@
+cluster_name           = "dev-camunda-dr"
+region_0               = "eu-west-1"
+region_1               = "us-east-1"
+secondary_storage_type = "rdbms"
+vpc_state_path         = "dual-region/vpc/dev.tfstate"

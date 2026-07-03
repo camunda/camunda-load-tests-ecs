@@ -4,6 +4,13 @@ data "aws_caller_identity" "current" {}
 
 locals {
   prometheus_port = data.terraform_remote_state.stable.outputs.ports.prometheus
+
+  # Dual-region: primary federates the secondary's Prometheus /federate
+  # endpoint via its internal NLB DNS name. Empty unless
+  # federation_peer_monitoring_state_key is set (see config.tf).
+  federate_targets = length(data.terraform_remote_state.federation_peer_monitoring) > 0 ? [
+    "${data.terraform_remote_state.federation_peer_monitoring[0].outputs.prometheus_nlb_dns}:${local.prometheus_port}"
+  ] : []
 }
 # Prometheus task definition
 resource "aws_ecs_task_definition" "prometheus" {
@@ -63,7 +70,7 @@ resource "aws_ecs_task_definition" "prometheus" {
       ]
       entryPoint = ["/bin/sh", "-c"]
       command = [
-        "cat <<'EOF' >/etc/prometheus/prometheus.yml\n${templatefile("${path.module}/templates/prometheus-config.yml.tpl", { prefix = var.prefix }) }\nEOF\nexec /bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.retention.time=168h --web.enable-lifecycle --web.listen-address=:${data.terraform_remote_state.stable.outputs.ports.prometheus}"
+        "cat <<'EOF' >/etc/prometheus/prometheus.yml\n${templatefile("${path.module}/templates/prometheus-config.yml.tpl", { prefix = var.prefix, federate_targets = local.federate_targets }) }\nEOF\nexec /bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.retention.time=168h --web.enable-lifecycle --web.listen-address=:${data.terraform_remote_state.stable.outputs.ports.prometheus}"
       ]
       mountPoints = [
         {
@@ -106,12 +113,22 @@ resource "aws_ecs_service" "prometheus" {
         data.terraform_remote_state.stable.outputs.security_groups_id["allow_remote_packages"],
       ],
       aws_security_group.allow_gcp_prometheus_federation[*].id,
+      aws_security_group.allow_dual_region_federation[*].id,
     )
     assign_public_ip = false
   }
 
   service_registries {
     registry_arn = aws_service_discovery_service.prometheus.arn
+  }
+
+  dynamic "load_balancer" {
+    for_each = var.expose_via_internal_nlb ? [1] : []
+    content {
+      target_group_arn = aws_lb_target_group.prometheus[0].arn
+      container_name    = "prometheus"
+      container_port    = local.prometheus_port
+    }
   }
 }
 
