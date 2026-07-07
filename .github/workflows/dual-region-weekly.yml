@@ -1,0 +1,179 @@
+---
+name: Dual-Region Weekly Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      docker_image:
+        description: 'Camunda image URI'
+        required: false
+        type: string
+        default: 'camunda/camunda:SNAPSHOT'
+      starter_image:
+        description: 'Starter (load generator) image URI'
+        required: false
+        type: string
+        default: 'registry.camunda.cloud/team-zeebe/starter:SNAPSHOT'
+      worker_image:
+        description: 'Worker image URI'
+        required: false
+        type: string
+        default: 'registry.camunda.cloud/team-zeebe/worker:SNAPSHOT'
+      skip_destroy_previous:
+        description: 'Skip destroying the previous week''s dual-region stack'
+        required: false
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      docker_image:
+        required: false
+        type: string
+        default: 'camunda/camunda:SNAPSHOT'
+      starter_image:
+        required: false
+        type: string
+        default: 'registry.camunda.cloud/team-zeebe/starter:SNAPSHOT'
+      worker_image:
+        required: false
+        type: string
+        default: 'registry.camunda.cloud/team-zeebe/worker:SNAPSHOT'
+      skip_destroy_previous:
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: dual-region-weekly
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-west-1
+  REGION_1: us-east-1
+  ENVIRONMENT: dev
+
+jobs:
+  weekly:
+    name: Dual-Region Weekly (deploy + load + rotate)
+    runs-on: ubuntu-latest
+    env:
+      CI: true  # enables -auto-approve in shared.mk
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Import secrets from Vault
+        id: secrets
+        uses: hashicorp/vault-action@2c5827061f1ad91ca97897d6257ebe638e033699
+        with:
+          url: ${{ secrets.VAULT_ADDR }}
+          method: approle
+          roleId: ${{ secrets.VAULT_ROLE_ID }}
+          secretId: ${{ secrets.VAULT_SECRET_ID }}
+          secrets: |
+            secret/data/products/zeebe/ci/common AWS_CORE_FOUNDATION_ACCESS_KEY | AWS_ACCESS_KEY_ID;
+            secret/data/products/zeebe/ci/common AWS_CORE_FOUNDATION_SECRET_KEY | AWS_SECRET_ACCESS_KEY;
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.7.0"
+
+      - name: Configure AWS CLI
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Compute run names
+        id: names
+        run: |
+          WEEK=$(date -u +%V)          # ISO week number, e.g. 28
+          BENCHMARK_NAME="dr-${WEEK}"
+          CLUSTER_NAME="dev-${BENCHMARK_NAME}"
+          echo "benchmark_name=${BENCHMARK_NAME}" >> "$GITHUB_OUTPUT"
+          echo "cluster_name=${CLUSTER_NAME}"     >> "$GITHUB_OUTPUT"
+          echo "load_name=${BENCHMARK_NAME}-r0"   >> "$GITHUB_OUTPUT"
+          echo "infra_key=dual-region/infra/${CLUSTER_NAME}.tfstate" >> "$GITHUB_OUTPUT"
+          echo "📅 Deploying ${CLUSTER_NAME}"
+
+      - name: Validate name length
+        run: aws/dual-region/scripts/validate-name.sh "${{ steps.names.outputs.cluster_name }}"
+
+      - name: Deploy VPC (cross-region peering)
+        working-directory: ./aws/dual-region/vpc/dev
+        run: make deploy BENCHMARK_NAME=${{ steps.names.outputs.benchmark_name }}
+
+      - name: Deploy infra (Aurora Global, ECS, LBs)
+        working-directory: ./aws/dual-region/infra/dev
+        run: make deploy BENCHMARK_NAME=${{ steps.names.outputs.benchmark_name }}
+
+      - name: Deploy app (brokers, gateway, connectors)
+        working-directory: ./aws/dual-region/app/dev
+        run: make deploy BENCHMARK_NAME=${{ steps.names.outputs.benchmark_name }} CAMUNDA_IMAGE="${{ inputs.docker_image }}"
+
+      - name: Resolve admin auth for the load generator
+        id: auth
+        # The infra deploy step already ran `init` (terraform -chdir=..), so
+        # aws/dual-region/infra/.terraform is bound to this run's state.
+        working-directory: ./aws/dual-region/infra
+        run: |
+          SECRET_ARN=$(terraform output -raw admin_user_password_secret_region_0_arn)
+          KMS_ARN=$(aws secretsmanager describe-secret --secret-id "$SECRET_ARN" --query KmsKeyId --output text)
+          echo "secret_arn=${SECRET_ARN}" >> "$GITHUB_OUTPUT"
+          echo "kms_arn=${KMS_ARN}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy load generator (in-VPC, region_0)
+        working-directory: ./aws/load_test/dev
+        run: |
+          make deploy BENCHMARK_NAME=${{ steps.names.outputs.load_name }} \
+            DUAL_REGION=true \
+            DUAL_REGION_INFRA_STATE_KEY=${{ steps.names.outputs.infra_key }} \
+            STARTER_IMAGE="${{ inputs.starter_image }}" \
+            WORKER_IMAGE="${{ inputs.worker_image }}" \
+            CAMUNDA_AUTH_USERNAME=admin \
+            CAMUNDA_AUTH_PASSWORD_SECRET_ARN="${{ steps.auth.outputs.secret_arn }}" \
+            CAMUNDA_AUTH_PASSWORD_KMS_KEY_ARN="${{ steps.auth.outputs.kms_arn }}"
+
+      - name: Destroy previous week's stack (discover from ECS, both regions)
+        if: ${{ inputs.skip_destroy_previous == false }}
+        env:
+          CURRENT: ${{ steps.names.outputs.cluster_name }}
+        run: |
+          set -uo pipefail
+          # Region_0 (eu-west-1) ECS clusters are named "<cluster_name>-r0-cluster".
+          # Find dev-dr-* clusters that are not the current run.
+          find_prev() {
+            aws ecs list-clusters --region "$1" --query 'clusterArns' --output text \
+              | tr '\t' '\n' | sed 's|.*/||' \
+              | grep -E "^dev-dr-[0-9]+-r0-cluster$" \
+              | sed 's/-r0-cluster$//' \
+              | grep -v "^${CURRENT}$" | sort -u
+          }
+          PREV_NAMES=$(find_prev "${AWS_REGION}")
+          if [ -z "$PREV_NAMES" ]; then
+            echo "ℹ️ No previous dual-region stack found — nothing to rotate out."
+            exit 0
+          fi
+          RC=0
+          for CN in $PREV_NAMES; do
+            BN="${CN#dev-}"   # strip dev- ; Makefile re-adds it
+            echo "🗑️ Destroying previous stack ${CN} (app → infra → vpc)"
+            # Load test for the previous run (best-effort; name = <BN>-r0)
+            make -C aws/load_test/dev destroy BENCHMARK_NAME="${BN}-r0" \
+              DUAL_REGION=true \
+              DUAL_REGION_INFRA_STATE_KEY="dual-region/infra/${CN}.tfstate" || RC=1
+            make -C aws/dual-region/app/dev   destroy BENCHMARK_NAME="$BN" || RC=1
+            make -C aws/dual-region/infra/dev destroy BENCHMARK_NAME="$BN" || RC=1
+            make -C aws/dual-region/vpc/dev   destroy BENCHMARK_NAME="$BN" || RC=1
+          done
+          if [ "$RC" -ne 0 ]; then
+            echo "::error::Previous-stack teardown reported errors — a costly dual-region stack may be leaking. Investigate today."
+            exit 1
+          fi
+
+      - name: Deployment summary
+        if: ${{ always() }}
+        run: |
+          echo "🌍 Dual-region weekly: ${{ steps.names.outputs.cluster_name }}"
+          echo "📦 Camunda image: ${{ inputs.docker_image }}"
+          echo "⚡ Load: ${{ steps.names.outputs.load_name }} (in-VPC, region_0, 150 PI/s)"
