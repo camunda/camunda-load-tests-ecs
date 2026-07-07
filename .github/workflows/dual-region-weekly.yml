@@ -5,10 +5,10 @@ on:
   workflow_dispatch:
     inputs:
       docker_image:
-        description: 'Camunda image URI'
+        description: 'Camunda image URI (empty = use the app''s pinned camunda_image default)'
         required: false
         type: string
-        default: 'camunda/camunda:SNAPSHOT'
+        default: ''
       starter_image:
         description: 'Starter (load generator) image URI'
         required: false
@@ -29,7 +29,7 @@ on:
       docker_image:
         required: false
         type: string
-        default: 'camunda/camunda:SNAPSHOT'
+        default: ''
       starter_image:
         required: false
         type: string
