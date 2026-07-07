@@ -33,6 +33,12 @@ variable "dual_region" {
   default     = false
 }
 
+variable "dual_region_infra_state_key" {
+  type        = string
+  default     = ""
+  description = "Explicit S3 key of the dual-region infra state to read (rotating name). Empty derives dual-region/infra/<environment>.tfstate for backward compatibility."
+}
+
 variable "grpc_address" {
   type        = string
   description = "Full gRPC client address (e.g. http://<lb-dns>:26500). Empty derives http://<camunda_host>:26500 from Cloud Map."

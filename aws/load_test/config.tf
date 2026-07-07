@@ -34,8 +34,10 @@ locals {
   # When dual_region is set, deploy the load generators into the dual-region
   # region-0 VPC/cluster (so Cloud Map DNS resolves and no public LB hop is
   # needed). Otherwise use the single-region stable stack as-is.
-  is_dual_region              = var.dual_region
-  dual_region_infra_state_key = "dual-region/infra/${var.environment}.tfstate"
+  is_dual_region = var.dual_region
+  dual_region_infra_state_key = var.dual_region_infra_state_key != "" ? (
+    var.dual_region_infra_state_key
+  ) : "dual-region/infra/${var.environment}.tfstate"
 }
 
 # we're consuming the remote stable state for the VPC, security groups, etc.

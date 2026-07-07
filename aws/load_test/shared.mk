@@ -22,6 +22,8 @@ GRPC_ADDRESS ?=
 REST_ADDRESS ?=
 # Set true to deploy into the dual-region region-0 VPC/cluster (default: single-region stable).
 DUAL_REGION ?= false
+# Explicit dual-region infra state key (rotating name). Empty = derive from environment.
+DUAL_REGION_INFRA_STATE_KEY ?=
 # When true, starter/worker use REST instead of gRPC
 PREFER_REST_OVER_GRPC ?= true
 LOG_GROUP_NAME = /ecs/$(PREFIX)
@@ -86,7 +88,8 @@ plan: init ## Plan the infrastructure changes
 		-var="camunda_auth_username=$(CAMUNDA_AUTH_USERNAME)" \
 		-var="camunda_auth_password_secret_arn=$(CAMUNDA_AUTH_PASSWORD_SECRET_ARN)" \
 		-var="camunda_auth_password_kms_key_arn=$(CAMUNDA_AUTH_PASSWORD_KMS_KEY_ARN)" \
-		-var="dual_region=$(DUAL_REGION)"
+		-var="dual_region=$(DUAL_REGION)" \
+		-var="dual_region_infra_state_key=$(DUAL_REGION_INFRA_STATE_KEY)"
 
 apply: init ## Apply the infrastructure changes
 	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) apply $(AUTO_APPROVE) \
@@ -102,7 +105,8 @@ apply: init ## Apply the infrastructure changes
 		-var="camunda_auth_username=$(CAMUNDA_AUTH_USERNAME)" \
 		-var="camunda_auth_password_secret_arn=$(CAMUNDA_AUTH_PASSWORD_SECRET_ARN)" \
 		-var="camunda_auth_password_kms_key_arn=$(CAMUNDA_AUTH_PASSWORD_KMS_KEY_ARN)" \
-		-var="dual_region=$(DUAL_REGION)"
+		-var="dual_region=$(DUAL_REGION)" \
+		-var="dual_region_infra_state_key=$(DUAL_REGION_INFRA_STATE_KEY)"
 
 deploy: apply ## Alias for apply
 
