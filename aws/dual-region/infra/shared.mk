@@ -6,6 +6,10 @@ BACKEND_KEY ?= $(error BACKEND_KEY not set)
 TFVARS_FILE ?= $(error TFVARS_FILE not set)
 TERRAFORM_DIR ?= ..
 
+# Extra -var flags injected by the per-environment Makefile (e.g. rotating
+# cluster_name and remote-state keys). Empty for a plain single-name deploy.
+EXTRA_TF_VARS ?=
+
 ifdef CI
   AUTO_APPROVE = -auto-approve
 else ifdef GITHUB_ACTIONS
@@ -31,15 +35,15 @@ init: ## Initialize Terraform with backend configuration
 	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) init -backend-config="key=$(BACKEND_KEY)" -reconfigure
 
 plan: init ## Plan the infrastructure changes
-	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) plan -var-file=$(TFVARS_FILE)
+	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) plan -var-file=$(TFVARS_FILE) $(EXTRA_TF_VARS)
 
 apply: init ## Apply the infrastructure changes
-	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) apply $(AUTO_APPROVE) -var-file=$(TFVARS_FILE)
+	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) apply $(AUTO_APPROVE) -var-file=$(TFVARS_FILE) $(EXTRA_TF_VARS)
 
 deploy: apply ## Alias for apply
 
 destroy: init ## Destroy infra (Aurora Global, ECS clusters, LBs). Must run AFTER app/ is destroyed.
-	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) destroy $(AUTO_APPROVE) -var-file=$(TFVARS_FILE)
+	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) destroy $(AUTO_APPROVE) -var-file=$(TFVARS_FILE) $(EXTRA_TF_VARS)
 
 clean: ## Clean terraform files
 	rm -rf $(TERRAFORM_DIR)/.terraform $(TERRAFORM_DIR)/.terraform.lock.hcl
