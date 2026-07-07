@@ -13,6 +13,17 @@ TERRAFORM_DIR ?= ..
 FORCE_NEW_DEPLOYMENT ?= false
 STARTER_IMAGE ?= registry.camunda.cloud/team-zeebe/starter:SNAPSHOT
 WORKER_IMAGE ?= registry.camunda.cloud/team-zeebe/worker:SNAPSHOT
+# Basic auth (empty = disabled; regular unprotected-API benchmarks run without it)
+CAMUNDA_AUTH_USERNAME ?=
+CAMUNDA_AUTH_PASSWORD_SECRET_ARN ?=
+CAMUNDA_AUTH_PASSWORD_KMS_KEY_ARN ?=
+# Client endpoints (empty = derive from CAMUNDA_HOST Cloud Map DNS)
+GRPC_ADDRESS ?=
+REST_ADDRESS ?=
+# Set true to deploy into the dual-region region-0 VPC/cluster (default: single-region stable).
+DUAL_REGION ?= false
+# When true, starter/worker use REST instead of gRPC
+PREFER_REST_OVER_GRPC ?= true
 LOG_GROUP_NAME = /ecs/$(PREFIX)
 
 # Auto-approve only in CI environments
@@ -67,8 +78,15 @@ plan: init ## Plan the infrastructure changes
 		-var="force_new_deployment=$(FORCE_NEW_DEPLOYMENT)" \
 		-var="prefix=$(PREFIX)" \
 		-var="camunda_host=$(CAMUNDA_HOST)" \
+		-var="grpc_address=$(GRPC_ADDRESS)" \
+		-var="rest_address=$(REST_ADDRESS)" \
+		-var="prefer_rest_over_grpc=$(PREFER_REST_OVER_GRPC)" \
 		-var="starter_image=$(STARTER_IMAGE)" \
-		-var="worker_image=$(WORKER_IMAGE)"
+		-var="worker_image=$(WORKER_IMAGE)" \
+		-var="camunda_auth_username=$(CAMUNDA_AUTH_USERNAME)" \
+		-var="camunda_auth_password_secret_arn=$(CAMUNDA_AUTH_PASSWORD_SECRET_ARN)" \
+		-var="camunda_auth_password_kms_key_arn=$(CAMUNDA_AUTH_PASSWORD_KMS_KEY_ARN)" \
+		-var="dual_region=$(DUAL_REGION)"
 
 apply: init ## Apply the infrastructure changes
 	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) apply $(AUTO_APPROVE) \
@@ -76,8 +94,15 @@ apply: init ## Apply the infrastructure changes
 		-var="force_new_deployment=$(FORCE_NEW_DEPLOYMENT)" \
 		-var="prefix=$(PREFIX)" \
 		-var="camunda_host=$(CAMUNDA_HOST)" \
+		-var="grpc_address=$(GRPC_ADDRESS)" \
+		-var="rest_address=$(REST_ADDRESS)" \
+		-var="prefer_rest_over_grpc=$(PREFER_REST_OVER_GRPC)" \
 		-var="starter_image=$(STARTER_IMAGE)" \
-		-var="worker_image=$(WORKER_IMAGE)"
+		-var="worker_image=$(WORKER_IMAGE)" \
+		-var="camunda_auth_username=$(CAMUNDA_AUTH_USERNAME)" \
+		-var="camunda_auth_password_secret_arn=$(CAMUNDA_AUTH_PASSWORD_SECRET_ARN)" \
+		-var="camunda_auth_password_kms_key_arn=$(CAMUNDA_AUTH_PASSWORD_KMS_KEY_ARN)" \
+		-var="dual_region=$(DUAL_REGION)"
 
 deploy: apply ## Alias for apply
 
@@ -85,7 +110,8 @@ destroy: init ## Destroy all load test infrastructure
 	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) destroy $(AUTO_APPROVE) \
 		-var-file=$(TFVARS_FILE) \
 		-var="prefix=$(PREFIX)" \
-		-var="camunda_host=$(CAMUNDA_HOST)"
+		-var="camunda_host=$(CAMUNDA_HOST)" \
+		-var="dual_region=$(DUAL_REGION)"
 
 clean: ## Clean terraform files
 	rm -rf $(TERRAFORM_DIR)/.terraform $(TERRAFORM_DIR)/.terraform.lock.hcl

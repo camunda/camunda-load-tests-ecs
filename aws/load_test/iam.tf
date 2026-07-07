@@ -176,8 +176,34 @@ resource "aws_iam_role_policy_attachment" "ecs_exec_policy_attachment" {
   policy_arn = aws_iam_policy.ecs_exec_policy.arn
 }
 
+# Registry-read policy exported by the stable stack (used in both single- and
+# dual-region modes; the secret is in eu-west-1, same region as region 0).
 resource "aws_iam_role_policy_attachment" "registry_policy_attachment" {
   role       = aws_iam_role.ecs_task_execution.name
   policy_arn = data.terraform_remote_state.stable.outputs.registry_credentials_iam_policy
+}
+
+# Grant the execution role read access to the basic-auth password secret so the
+# ECS agent can inject CAMUNDA_CLIENT_AUTH_PASSWORD. Only created when basic auth is enabled.
+resource "aws_iam_role_policy" "camunda_auth_secret" {
+  count = local.use_basic_auth ? 1 : 0
+  name  = "${var.prefix}-camunda-auth-secret"
+  role  = aws_iam_role.ecs_task_execution.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = concat(
+      [{
+        Effect   = "Allow"
+        Action   = "secretsmanager:GetSecretValue"
+        Resource = var.camunda_auth_password_secret_arn
+      }],
+      var.camunda_auth_password_kms_key_arn != "" ? [{
+        Effect   = "Allow"
+        Action   = "kms:Decrypt"
+        Resource = var.camunda_auth_password_kms_key_arn
+      }] : []
+    )
+  })
 }
 

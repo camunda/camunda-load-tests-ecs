@@ -54,6 +54,16 @@ module "orchestration_cluster_region_0" {
         name  = "CAMUNDA_DATA_BACKUP_REPOSITORYNAME"
         value = local.infra.backup_bucket_region_0_name
       },
+      { name = "CAMUNDA_CLUSTER_RAFT_MAXAPPENDSPERFOLLOWER",
+        value = 1 
+      },
+      { name = "CAMUNDA_CLUSTER_RAFT_MAXAPPENDBATCHSIZE",
+        value = "1MB"
+      },
+      {
+        name  = "CAMUNDA_CLUSTER_RAFT_SEGMENT_PREALLOCATION_STRATEGY"
+        value = "NOOP"
+      }
     ]
   )
 
@@ -239,22 +249,12 @@ module "connectors_region_0" {
         value = "http://${module.orchestration_cluster_region_0.grpc_service_connect}:26500"
       },
       {
+        # Cluster runs unprotected API (no bcrypt); connectors skip auth too.
         name  = "CAMUNDA_CLIENT_AUTH_METHOD"
-        value = "basic"
-      },
-      {
-        name  = "CAMUNDA_CLIENT_AUTH_USERNAME"
-        value = "connectors"
+        value = "none"
       }
     ]
   )
-
-  secrets = [
-    {
-      name      = "CAMUNDA_CLIENT_AUTH_PASSWORD"
-      valueFrom = local.infra.connectors_password_secret_region_0_arn
-    }
-  ]
 
   task_desired_count = 1
   extra_task_role_attachments = concat(
@@ -320,22 +320,12 @@ module "connectors_region_1" {
         value = "http://${module.orchestration_cluster_region_1.grpc_service_connect}:26500"
       },
       {
+        # Cluster runs unprotected API (no bcrypt); connectors skip auth too.
         name  = "CAMUNDA_CLIENT_AUTH_METHOD"
-        value = "basic"
-      },
-      {
-        name  = "CAMUNDA_CLIENT_AUTH_USERNAME"
-        value = "connectors"
+        value = "none"
       }
     ]
   )
-
-  secrets = [
-    {
-      name      = "CAMUNDA_CLIENT_AUTH_PASSWORD"
-      valueFrom = local.infra.connectors_password_secret_region_1_arn
-    }
-  ]
 
   task_desired_count = 1
   extra_task_role_attachments = concat(

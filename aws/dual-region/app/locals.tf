@@ -5,7 +5,7 @@
 locals {
   # Zeebe dual-region cluster configuration
   cluster_size        = 4
-  replication_factor  = 2
+  replication_factor  = 4
   partition_count     = 4
   brokers_per_region  = 2
   replicas_per_region = local.replication_factor / 2
@@ -29,7 +29,17 @@ locals {
     },
     {
       name  = "ZEEBE_BROKER_CLUSTER_MEMBERSHIP_FAILURETIMEOUT"
-      value = "10000ms"
+      value = "5000ms"
+    },
+    # Raft heartbeat interval raised to reduce cross-region append frequency.
+    # Election timeout kept at ~3x the heartbeat to avoid spurious re-elections.
+    {
+      name  = "ZEEBE_BROKER_CLUSTER_HEARTBEATINTERVAL"
+      value = "500ms"
+    },
+    {
+      name  = "ZEEBE_BROKER_CLUSTER_ELECTIONTIMEOUT"
+      value = "5s"
     },
     # Region 0 topology
     {
@@ -155,7 +165,20 @@ locals {
       value = "basic"
     },
     {
+      # Unprotected API: no per-request bcrypt on the broker. Load generators
+      # (starter/worker/connectors) hammer the API, and basic-auth bcrypt
+      # verification burns broker CPU. Only safe because the cluster has no
+      # public ingress — clients live inside the same VPC/region.
       name  = "CAMUNDA_SECURITY_AUTHENTICATION_UNPROTECTEDAPI"
+      value = "true"
+    },
+    {
+      # Authorizations must be disabled together with unprotected API. With
+      # unprotected API on but authorizations enabled (the 8.10 default),
+      # requests run as anonymous and are rejected with FORBIDDEN. Documented
+      # conflicting mode — the valid "unprotected" combo is unprotected=true +
+      # authorizations=false.
+      name  = "CAMUNDA_SECURITY_AUTHORIZATIONS_ENABLED"
       value = "false"
     },
     {
@@ -193,6 +216,6 @@ locals {
     {
       name  = "CAMUNDA_DATA_BACKUP_STORE"
       value = "S3"
-    },
+    }
   ]
 }

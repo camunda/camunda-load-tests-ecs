@@ -97,6 +97,90 @@ Note: the central Grafana federating eu-west-1 Prometheus uses the pre-existing
 `gcp_federation_cidrs` SG rule (`security.tf`, `allow_gcp_prometheus_federation`),
 untouched by the dual-region work.
 
+## Load generation (primary region only)
+
+No dedicated Terraform — reuse the single-region `aws/load_test` module. It reads
+the `stable/dev` state, which is region_0's BYO VPC, and its `BENCHMARK_NAME`
+override targets an arbitrary cluster:
+
+Unlike the regular single-region benchmark (`CAMUNDA_SECURITY_AUTHENTICATION_UNPROTECTEDAPI=true`),
+the dual-region cluster runs with **basic auth required** (`UNPROTECTEDAPI=false`), so the
+load generator must authenticate. Pass the `admin` user credentials — the password lives
+in the dual-region infra secret (a customer-managed KMS key encrypts it, so the load-test
+execution role also needs `kms:Decrypt`):
+
+```bash
+cd aws/load_test/dev
+
+SECRET_ARN=$(terraform -chdir=../../dual-region/infra output -raw admin_user_password_secret_region_0_arn)
+KMS_ARN=$(aws secretsmanager describe-secret --secret-id "$SECRET_ARN" --query KmsKeyId --output text)
+
+make deploy BENCHMARK_NAME=camunda-dr-r0 \
+  CAMUNDA_AUTH_USERNAME=admin \
+  CAMUNDA_AUTH_PASSWORD_SECRET_ARN="$SECRET_ARN" \
+  CAMUNDA_AUTH_PASSWORD_KMS_KEY_ARN="$KMS_ARN"
+```
+
+When `CAMUNDA_AUTH_USERNAME` is empty (regular benchmarks against an unprotected API) the
+load test injects no auth env/secret and needs no extra IAM — same behaviour as before.
+The client config mirrors the dual-region connectors task (`CAMUNDA_CLIENT_MODE=self-managed`,
+`CAMUNDA_CLIENT_AUTH_METHOD=basic`, `CAMUNDA_CLIENT_AUTH_USERNAME`, secret
+`CAMUNDA_CLIENT_AUTH_PASSWORD`).
+
+This gives (region_0 / eu-west-1 only):
+
+- starter (1 task, 150 PI/s) + worker (3 tasks) pointed at
+  `orchestration-cluster.dev-camunda-dr-r0-oc.service.local` (gRPC 26500,
+  REST 8080) — the plain Cloud Map DNS name that resolves to the broker task IPs;
+- `prefix = dev-camunda-dr-r0-lt`, state `dev/load_tests/camunda-dr-r0-lt.tfstate`;
+- tasks run in the `stable/dev` ECS cluster, same VPC as the region_0 brokers.
+
+Why this works without SG changes: the region_0 broker SG
+(`dual-region/infra/security.tf`, `camunda_ports_region_0`) allows all
+`var.ports` from the whole region_0 VPC CIDR (`10.52.0.0/16`), so load tasks in
+the shared VPC reach the brokers on 26500/8080 by CIDR, not by SG reference.
+
+Only the primary region is loaded; region_1 stays a passive far-region replica.
+Tear down with `make destroy BENCHMARK_NAME=camunda-dr-r0` from the same dir.
+
+### Pointing the client at the region_0 load balancers (instead of Cloud Map)
+
+By default the load client resolves `orchestration-cluster.<...>-oc.service.local`
+(Cloud Map), which round-robins across **both** region_0 broker task IPs and pins
+one gRPC connection to a single broker. If a task IP is stale/dead or its embedded
+gateway is slow, gRPC hangs until the deadline (`DEADLINE_EXCEEDED`, with a large
+`connecting_and_lb_delay` — note `call_credentials_delay` stays ~ms, so this is a
+connectivity problem, not auth). The region_0 LBs front the same brokers with health
+checks, so an unhealthy target is skipped.
+
+`aws/load_test` exposes `GRPC_ADDRESS` / `REST_ADDRESS` overrides (empty = derive
+from `CAMUNDA_HOST` Cloud Map DNS, unchanged for regular benchmarks). The dual-region
+infra outputs the region_0 endpoints:
+
+```bash
+cd aws/load_test/dev
+GRPC=$(terraform -chdir=../../dual-region/infra output -raw region_0_nlb_grpc_endpoint)
+REST=$(terraform -chdir=../../dual-region/infra output -raw region_0_alb_endpoint)
+
+make deploy BENCHMARK_NAME=camunda-dr-r0 \
+  GRPC_ADDRESS="http://${GRPC}:26500" \
+  REST_ADDRESS="http://${REST}:80" \
+  CAMUNDA_AUTH_USERNAME=admin \
+  CAMUNDA_AUTH_PASSWORD_SECRET_ARN="$SECRET_ARN" \
+  CAMUNDA_AUTH_PASSWORD_KMS_KEY_ARN="$KMS_ARN"
+```
+
+- gRPC → external NLB `<prefix>-r0-nlb-grpc`, listener **26500**.
+- REST → external ALB `<prefix>-r0-alb`, webapp listener on port **80** (forwards to
+  broker 8080) — so REST uses `:80`, not `:8080`.
+
+> **Caveat:** both LBs are internet-facing (`infra/lb.tf`, `internal = false`, public
+> subnets). Load tasks in the private stable/dev subnet reach them via NAT, arriving
+> with the NAT gateway's public IP. The broker SG `camunda_ports_region_0` only allows
+> the region_0 VPC CIDR, so the NAT public IP must be covered by `remote_access_region_0`
+> (external allowlist) or the LB connection is refused rather than balanced. Confirm the
+> NAT egress IP is allowed before trusting a LB-vs-Cloud-Map comparison.
+
 ## Viewing metrics in Grafana (infra-core `benchmark` Grafana)
 
 The dual-region metrics are **not** viewed in the AWS Grafana. They flow into the
