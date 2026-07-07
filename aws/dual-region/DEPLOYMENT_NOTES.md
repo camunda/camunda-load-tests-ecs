@@ -253,3 +253,26 @@ Debug path when region_0 is missing (all confirmable without VPN):
   state (`federation_peer_monitoring_state_key`); applying it before
   `aws/monitoring/us-east-1` fails with `No stored state was found`. Deploy the
   secondary first (see Monitoring section above).
+
+## State-key migration (one-time, when adopting rotating names)
+
+The deploy commands now key Terraform state on the run name:
+`dual-region/<state>/<cluster_name>.tfstate` (e.g. `dev-camunda-dr.tfstate`),
+where earlier the key was the fixed `dual-region/<state>/dev.tfstate`.
+
+Before the first rotating deploy, retire the old stack so its resources don't
+leak (it is an ephemeral benchmark cluster — destroying is expected):
+
+```bash
+# Destroy the old-keyed stack (app → infra → vpc) using the OLD keys.
+for s in app infra vpc; do
+  terraform -chdir=aws/dual-region/$s init -reconfigure \
+    -backend-config="key=dual-region/$s/dev.tfstate"
+  terraform -chdir=aws/dual-region/$s destroy -auto-approve \
+    -var-file=dev/terraform.tfvars -var="cluster_name=dev-camunda-dr" \
+    -var="vpc_state_path=dual-region/vpc/dev.tfstate" \
+    -var="infra_state_path=dual-region/infra/dev.tfstate"
+done
+```
+
+Afterwards all deploys go through the per-env Makefiles with `BENCHMARK_NAME`.
