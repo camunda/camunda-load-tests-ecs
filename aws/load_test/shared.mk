@@ -10,6 +10,8 @@ CAMUNDA_HOST ?= $(error CAMUNDA_HOST not set)
 TFVARS_FILE ?= $(error TFVARS_FILE not set)
 TERRAFORM_DIR ?= ..
 
+# Region to deploy load test resources into (state backend stays eu-west-1)
+AWS_REGION ?= eu-west-1
 FORCE_NEW_DEPLOYMENT ?= false
 STARTER_IMAGE ?= registry.camunda.cloud/team-zeebe/starter:SNAPSHOT
 WORKER_IMAGE ?= registry.camunda.cloud/team-zeebe/worker:SNAPSHOT
@@ -20,8 +22,11 @@ CAMUNDA_AUTH_PASSWORD_KMS_KEY_ARN ?=
 # Client endpoints (empty = derive from CAMUNDA_HOST Cloud Map DNS)
 GRPC_ADDRESS ?=
 REST_ADDRESS ?=
-# Set true to deploy into the dual-region region-0 VPC/cluster (default: single-region stable).
+# Set true to deploy into the dual-region region VPC/cluster (default: single-region stable).
 DUAL_REGION ?= false
+# Which dual-region region to target: 0 (region_0) or 1 (region_1). Requires DUAL_REGION=true.
+# Provider region is derived from the infra state for the chosen index.
+DUAL_REGION_INDEX ?= 0
 # Explicit dual-region infra state key (rotating name). Empty = derive from environment.
 DUAL_REGION_INFRA_STATE_KEY ?=
 # When true, starter/worker use REST instead of gRPC
@@ -77,6 +82,7 @@ init: ## Initialize Terraform with backend configuration
 plan: init ## Plan the infrastructure changes
 	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) plan \
 		-var-file=$(TFVARS_FILE) \
+		-var="aws_region=$(AWS_REGION)" \
 		-var="force_new_deployment=$(FORCE_NEW_DEPLOYMENT)" \
 		-var="prefix=$(PREFIX)" \
 		-var="camunda_host=$(CAMUNDA_HOST)" \
@@ -89,11 +95,13 @@ plan: init ## Plan the infrastructure changes
 		-var="camunda_auth_password_secret_arn=$(CAMUNDA_AUTH_PASSWORD_SECRET_ARN)" \
 		-var="camunda_auth_password_kms_key_arn=$(CAMUNDA_AUTH_PASSWORD_KMS_KEY_ARN)" \
 		-var="dual_region=$(DUAL_REGION)" \
+		-var="dual_region_index=$(DUAL_REGION_INDEX)" \
 		-var="dual_region_infra_state_key=$(DUAL_REGION_INFRA_STATE_KEY)"
 
 apply: init ## Apply the infrastructure changes
 	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) apply $(AUTO_APPROVE) \
 		-var-file=$(TFVARS_FILE) \
+		-var="aws_region=$(AWS_REGION)" \
 		-var="force_new_deployment=$(FORCE_NEW_DEPLOYMENT)" \
 		-var="prefix=$(PREFIX)" \
 		-var="camunda_host=$(CAMUNDA_HOST)" \
@@ -106,6 +114,7 @@ apply: init ## Apply the infrastructure changes
 		-var="camunda_auth_password_secret_arn=$(CAMUNDA_AUTH_PASSWORD_SECRET_ARN)" \
 		-var="camunda_auth_password_kms_key_arn=$(CAMUNDA_AUTH_PASSWORD_KMS_KEY_ARN)" \
 		-var="dual_region=$(DUAL_REGION)" \
+		-var="dual_region_index=$(DUAL_REGION_INDEX)" \
 		-var="dual_region_infra_state_key=$(DUAL_REGION_INFRA_STATE_KEY)"
 
 deploy: apply ## Alias for apply
@@ -113,15 +122,20 @@ deploy: apply ## Alias for apply
 destroy: init ## Destroy all load test infrastructure
 	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) destroy $(AUTO_APPROVE) \
 		-var-file=$(TFVARS_FILE) \
+		-var="aws_region=$(AWS_REGION)" \
 		-var="prefix=$(PREFIX)" \
 		-var="camunda_host=$(CAMUNDA_HOST)" \
-		-var="dual_region=$(DUAL_REGION)"
+		-var="dual_region=$(DUAL_REGION)" \
+		-var="dual_region_index=$(DUAL_REGION_INDEX)"
 
 clean: ## Clean terraform files
 	rm -rf $(TERRAFORM_DIR)/.terraform $(TERRAFORM_DIR)/.terraform.lock.hcl
 
 show-vars: ## Show current variable values
 	@echo "ENV:            $(ENV)"
+	@echo "AWS_REGION:     $(AWS_REGION)"
+	@echo "DUAL_REGION:    $(DUAL_REGION)"
+	@echo "DUAL_REGION_INDEX: $(DUAL_REGION_INDEX)"
 	@echo "TERRAFORM:      $(TERRAFORM)"
 	@echo "TERRAFORM_DIR:  $(TERRAFORM_DIR)"
 	@echo "BENCHMARK_NUMBER: $(BENCHMARK_NUMBER)"

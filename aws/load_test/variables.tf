@@ -16,6 +16,12 @@ variable "environment" {
   }
 }
 
+variable "aws_region" {
+  type        = string
+  description = "AWS region to deploy the load test resources into. Backend and source remote-state stay in eu-west-1."
+  default     = "eu-west-1"
+}
+
 variable "prefix" {
   type        = string
   description = "The prefix to use for names of resources"
@@ -29,14 +35,25 @@ variable "camunda_host" {
 
 variable "dual_region" {
   type        = bool
-  description = "When true, deploy load generators into the dual-region region-0 VPC/cluster (infra state dual-region/infra/<environment>.tfstate) instead of the single-region stable stack."
+  description = "When true, deploy load generators into the dual-region region-0 VPC/cluster (infra state dual-region/infra/<environment>-camunda-dr.tfstate) instead of the single-region stable stack."
   default     = false
+}
+
+variable "dual_region_index" {
+  type        = number
+  default     = 0
+  description = "Which dual-region region to deploy load generators into: 0 (region_0, default) or 1 (region_1). Ignored unless dual_region=true. Provider region is derived from the dual-region infra state for the chosen region."
+
+  validation {
+    condition     = contains([0, 1], var.dual_region_index)
+    error_message = "dual_region_index must be 0 or 1."
+  }
 }
 
 variable "dual_region_infra_state_key" {
   type        = string
   default     = ""
-  description = "Explicit S3 key of the dual-region infra state to read (rotating name). Empty derives dual-region/infra/<environment>.tfstate for backward compatibility."
+  description = "Explicit S3 key of the dual-region infra state to read (rotating name). Empty derives dual-region/infra/<environment>-camunda-dr.tfstate (matches dual-region/infra's default BENCHMARK_NAME=camunda-dr)."
 }
 
 variable "grpc_address" {

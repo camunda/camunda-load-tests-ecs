@@ -48,6 +48,12 @@ variable "cluster_name" {
   description = "Name of the cluster to prefix resources"
 }
 
+variable "stable_environment" {
+  type        = string
+  default     = "dev"
+  description = "Environment name of the stable stack (stable/<env>/terraform.tfstate) whose registry credentials to reuse for region 0"
+}
+
 variable "aws_profile" {
   type        = string
   description = "AWS Profile to use (null = use default credential chain)"

@@ -50,7 +50,7 @@ resource "aws_iam_policy" "ecs_task_secrets_region_0" {
             aws_secretsmanager_secret.connectors_password_region_0.arn,
           ],
           var.secondary_storage_type == "rdbms" ? [aws_secretsmanager_secret.db_admin_password_region_0.arn] : [],
-          var.registry_username != "" ? [aws_secretsmanager_secret.registry_credentials_region_0[0].arn] : [],
+          local.registry_credentials_region_0_arn != "" ? [local.registry_credentials_region_0_arn] : [],
         )
       },
       {
@@ -85,6 +85,13 @@ resource "aws_iam_policy" "rds_db_connect_region_0" {
           "arn:aws:rds-db:${data.aws_region.region_0.id}:${data.aws_caller_identity.current.account_id}:dbuser:${module.aurora_global[0].primary_cluster_resource_id}/camunda",
           "arn:aws:rds-db:${data.aws_region.region_1.id}:${data.aws_caller_identity.current.account_id}:dbuser:${module.aurora_global[0].secondary_cluster_resource_id}/camunda",
         ]
+      },
+      {
+        # Needed by the AWS JDBC wrapper's failover plugin to discover global cluster topology.
+        Sid      = "AllowRDSDescribeGlobalCluster"
+        Effect   = "Allow"
+        Action   = ["rds:DescribeGlobalClusters"]
+        Resource = ["arn:aws:rds::${data.aws_caller_identity.current.account_id}:global-cluster:${module.aurora_global[0].global_cluster_id}"]
       }
     ]
   })
@@ -141,7 +148,7 @@ resource "aws_iam_policy" "ecs_task_secrets_region_1" {
             aws_secretsmanager_secret.admin_user_password_region_1.arn,
             aws_secretsmanager_secret.connectors_password_region_1.arn,
           ],
-          var.registry_username != "" ? [aws_secretsmanager_secret.registry_credentials_region_1[0].arn] : [],
+          local.registry_credentials_region_1_arn != "" ? [local.registry_credentials_region_1_arn] : [],
         )
       },
       {
@@ -179,6 +186,13 @@ resource "aws_iam_policy" "rds_db_connect_region_1" {
           "arn:aws:rds-db:${data.aws_region.region_0.id}:${data.aws_caller_identity.current.account_id}:dbuser:${module.aurora_global[0].primary_cluster_resource_id}/camunda",
           "arn:aws:rds-db:${data.aws_region.region_1.id}:${data.aws_caller_identity.current.account_id}:dbuser:${module.aurora_global[0].secondary_cluster_resource_id}/camunda",
         ]
+      },
+      {
+        # Needed by the AWS JDBC wrapper's failover plugin to discover global cluster topology.
+        Sid      = "AllowRDSDescribeGlobalCluster"
+        Effect   = "Allow"
+        Action   = ["rds:DescribeGlobalClusters"]
+        Resource = ["arn:aws:rds::${data.aws_caller_identity.current.account_id}:global-cluster:${module.aurora_global[0].global_cluster_id}"]
       }
     ]
   })

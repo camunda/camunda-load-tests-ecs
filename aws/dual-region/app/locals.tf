@@ -10,6 +10,7 @@ locals {
   brokers_per_region  = 2
   replicas_per_region = local.replication_factor / 2
 
+
   # Region-aware partitioning env vars
   # Note: CAMUNDA_CLUSTER_SIZE, REPLICATIONFACTOR, PARTITIONCOUNT, and INITIALCONTACTPOINTS
   # are already set by the orchestration-cluster module via its variables.

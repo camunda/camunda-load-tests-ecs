@@ -32,3 +32,29 @@ data "aws_subnet" "region_1_private" {
   provider = aws.accepter
   id       = local.vpc.region_1_private_subnet_ids[count.index]
 }
+
+################################################################
+# Stable Stack State (registry credentials, synced from Vault) #
+################################################################
+
+# region 0 (eu-west-1) stable stack
+data "terraform_remote_state" "stable" {
+  backend = "s3"
+
+  config = {
+    bucket = "zeebe-terraform-states"
+    key    = "stable/${var.stable_environment}/terraform.tfstate"
+    region = "eu-west-1"
+  }
+}
+
+# region 1 (us-east-1) stable stack
+data "terraform_remote_state" "stable_us_east_1" {
+  backend = "s3"
+
+  config = {
+    bucket = "zeebe-terraform-states"
+    key    = "stable/us-east-1/terraform.tfstate"
+    region = "eu-west-1"
+  }
+}

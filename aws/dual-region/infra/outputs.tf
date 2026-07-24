@@ -202,11 +202,11 @@ output "connectors_password_secret_region_1_arn" {
 }
 
 output "registry_credentials_region_0_arn" {
-  value = var.registry_username != "" ? aws_secretsmanager_secret.registry_credentials_region_0[0].arn : ""
+  value = local.registry_credentials_region_0_arn
 }
 
 output "registry_credentials_region_1_arn" {
-  value = var.registry_username != "" ? aws_secretsmanager_secret.registry_credentials_region_1[0].arn : ""
+  value = local.registry_credentials_region_1_arn
 }
 
 ################################################################

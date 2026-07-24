@@ -176,11 +176,42 @@ resource "aws_iam_role_policy_attachment" "ecs_exec_policy_attachment" {
   policy_arn = aws_iam_policy.ecs_exec_policy.arn
 }
 
-# Registry-read policy exported by the stable stack (used in both single- and
-# dual-region modes; the secret is in eu-west-1, same region as region 0).
+# Registry-read policy exported by the stable stack. Used for single-region and
+# dual-region region_0 (secret is in eu-west-1, same region as region 0).
 resource "aws_iam_role_policy_attachment" "registry_policy_attachment" {
+  count      = local.use_region_1 ? 0 : 1
   role       = aws_iam_role.ecs_task_execution.name
   policy_arn = data.terraform_remote_state.stable.outputs.registry_credentials_iam_policy
+}
+
+# dual-region region_1 registry secret lives in region_1 and is CMK-encrypted,
+# so the stable-stack policy does not cover it. Grant read + decrypt directly.
+# kms:ViaService scopes decrypt to Secrets Manager in the deploy region.
+resource "aws_iam_role_policy" "registry_region_1" {
+  count = local.use_region_1 ? 1 : 0
+  name  = "${var.prefix}-registry-region-1"
+  role  = aws_iam_role.ecs_task_execution.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "secretsmanager:GetSecretValue"
+        Resource = local.registry_credentials_arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = "kms:Decrypt"
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "kms:ViaService" = "secretsmanager.${local.provider_region}.amazonaws.com"
+          }
+        }
+      }
+    ]
+  })
 }
 
 # Grant the execution role read access to the basic-auth password secret so the

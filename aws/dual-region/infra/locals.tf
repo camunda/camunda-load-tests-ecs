@@ -21,4 +21,11 @@ locals {
   # Used by Aurora to populate the cluster's availability_zones argument.
   region_0_azs = distinct([for s in data.aws_subnet.region_0_private : s.availability_zone])
   region_1_azs = distinct([for s in data.aws_subnet.region_1_private : s.availability_zone])
+
+  # Registry credentials ARN actually used per region: the manual secret when
+  # registry_username is explicitly set, otherwise the Vault-synced creds from
+  # the stable stack (always populated). Shared by the outputs and the task
+  # execution role IAM policies below.
+  registry_credentials_region_0_arn = var.registry_username != "" ? aws_secretsmanager_secret.registry_credentials_region_0[0].arn : data.terraform_remote_state.stable.outputs.registry_credentials_arn
+  registry_credentials_region_1_arn = var.registry_username != "" ? aws_secretsmanager_secret.registry_credentials_region_1[0].arn : data.terraform_remote_state.stable_us_east_1.outputs.registry_credentials_arn
 }
