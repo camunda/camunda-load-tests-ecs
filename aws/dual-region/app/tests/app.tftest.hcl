@@ -70,6 +70,7 @@ override_data {
       aurora_secondary_endpoint                 = "aurora-secondary.example.com"
       aurora_primary_cluster_identifier         = "test-app-r0-aurora"
       aurora_secondary_cluster_identifier       = "test-app-r1-aurora"
+      aurora_jdbc_url                           = "jdbc:aws-wrapper:mysql://aurora-global.example.com:3306/camunda?wrapperPlugins=iam,failover&globalClusterInstanceHostPatterns=?.p.example.com,?.s.example.com"
       opensearch_region_0_endpoint              = "opensearch-r0.example.com"
       opensearch_region_1_endpoint              = "opensearch-r1.example.com"
       s3_force_destroy                          = true
@@ -153,6 +154,7 @@ run "opensearch_env_vars_local_populated_when_opensearch" {
         aurora_secondary_endpoint                 = ""
         aurora_primary_cluster_identifier         = ""
         aurora_secondary_cluster_identifier       = ""
+        aurora_jdbc_url                           = ""
         opensearch_region_0_endpoint              = "opensearch-r0.example.com"
         opensearch_region_1_endpoint              = "opensearch-r1.example.com"
         s3_force_destroy                          = true
