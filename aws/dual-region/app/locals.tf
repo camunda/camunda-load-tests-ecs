@@ -113,7 +113,7 @@ locals {
     },
     {
       name  = "CAMUNDA_DATA_SECONDARYSTORAGE_RDBMS_URL"
-      value = "jdbc:aws-wrapper:postgresql://${local.infra.aurora_primary_endpoint}:5432/${local.infra.db_name}?wrapperPlugins=iam,failover&globalClusterInstanceHostPatterns=${local.aurora_primary_instance_pattern},${local.aurora_secondary_instance_pattern}"
+      value = "jdbc:aws-wrapper:mysql://${local.infra.aurora_primary_endpoint}:3306/${local.infra.db_name}?wrapperPlugins=iam,failover&globalClusterInstanceHostPatterns=${local.aurora_primary_instance_pattern},${local.aurora_secondary_instance_pattern}"
     },
     {
       name  = "CAMUNDA_DATA_SECONDARYSTORAGE_RDBMS_USERNAME"

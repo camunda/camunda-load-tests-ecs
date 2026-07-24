@@ -4,7 +4,7 @@
 
 module "aurora_global" {
   count  = var.secondary_storage_type == "rdbms" ? 1 : 0
-  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/aurora-global?ref=e127b1098996434a0395f166dfa8289ddc0f4fe4"
+  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/aurora-global?ref=f645534a16e203a39bfab1cae30975d901b61303"
 
   providers = {
     aws.primary   = aws
@@ -13,8 +13,9 @@ module "aurora_global" {
 
   global_cluster_identifier = "${local.prefix}-global-db"
 
-  # renovate: datasource=custom.aurora-pg-camunda depName=aurora-postgresql versioning=loose
-  engine_version             = "18.3"
+  engine = "aurora-mysql"
+  # renovate: datasource=custom.aurora-mysql-camunda depName=aurora-mysql versioning=loose
+  engine_version             = "8.4.mysql_aurora.8.4.7"
   auto_minor_version_upgrade = false
   database_name              = var.db_name
 

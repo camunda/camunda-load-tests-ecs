@@ -21,7 +21,7 @@ resource "aws_ecs_task_definition" "db_seed" {
   container_definitions = jsonencode([
     {
       name      = "db-seed"
-      image     = "public.ecr.aws/docker/library/postgres:17-alpine"
+      image     = "public.ecr.aws/docker/library/mysql:8.4"
       essential = true
 
       entryPoint = ["/bin/sh", "-lc"]
@@ -37,15 +37,17 @@ resource "aws_ecs_task_definition" "db_seed" {
           echo "Seeding database users for IAM auth: $${IAM_DB_USERS}"
 
           for user in $${IAM_DB_USERS}; do
-            echo "Ensuring role exists: $${user}"
+            echo "Ensuring user exists: $${user}"
 
-            psql "host=$${AURORA_ENDPOINT} port=$${AURORA_PORT} dbname=$${AURORA_DB_NAME} user=$${AURORA_ADMIN_USERNAME} password=$${AURORA_ADMIN_PASSWORD} sslmode=require" \
-              -v ON_ERROR_STOP=1 \
-              -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$${user}') THEN CREATE ROLE \"$${user}\" WITH LOGIN; END IF; END \$\$;" \
-              -c "ALTER ROLE \"$${user}\" WITH LOGIN;" \
-              -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_auth_members m JOIN pg_roles r ON r.oid = m.roleid JOIN pg_roles u ON u.oid = m.member WHERE r.rolname = 'rds_iam' AND u.rolname = '$${user}') THEN GRANT rds_iam TO \"$${user}\"; END IF; END \$\$;" \
-              -c "GRANT ALL PRIVILEGES ON DATABASE \"$${AURORA_DB_NAME}\" TO \"$${user}\";" \
-              -c "GRANT USAGE, CREATE ON SCHEMA public TO \"$${user}\";"
+            mysql \
+              --host="$${AURORA_ENDPOINT}" \
+              --port="$${AURORA_PORT}" \
+              --user="$${AURORA_ADMIN_USERNAME}" \
+              --password="$${AURORA_ADMIN_PASSWORD}" \
+              --ssl-mode=REQUIRED \
+              -e "CREATE USER IF NOT EXISTS '$${user}'@'%' IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS' REQUIRE SSL;
+                  GRANT ALL PRIVILEGES ON \`$${AURORA_DB_NAME}\`.* TO '$${user}'@'%';
+                  FLUSH PRIVILEGES;"
           done
 
           echo "DB seeding complete."
@@ -54,7 +56,7 @@ resource "aws_ecs_task_definition" "db_seed" {
 
       environment = [
         { name = "AURORA_ENDPOINT", value = module.aurora_global[0].primary_cluster_endpoint },
-        { name = "AURORA_PORT", value = "5432" },
+        { name = "AURORA_PORT", value = "3306" },
         { name = "AURORA_DB_NAME", value = var.db_name },
         { name = "AURORA_ADMIN_USERNAME", value = var.db_admin_username },
         { name = "IAM_DB_USERS", value = join(" ", var.db_seed_iam_usernames) }

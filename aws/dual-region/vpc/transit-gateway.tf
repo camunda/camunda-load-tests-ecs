@@ -4,14 +4,15 @@
 
 module "transit_gateway" {
   count  = var.networking_mode == "transit_gateway" ? 1 : 0
-  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/transit-gateway?ref=e127b1098996434a0395f166dfa8289ddc0f4fe4"
+  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/transit-gateway?ref=f645534a16e203a39bfab1cae30975d901b61303"
 
   providers = {
     aws.owner    = aws
     aws.accepter = aws.accepter
   }
 
-  prefix = local.prefix
+  prefix          = local.prefix
+  accepter_region = var.region_1
 }
 
 ################################

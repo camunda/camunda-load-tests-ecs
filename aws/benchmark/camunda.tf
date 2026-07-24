@@ -27,8 +27,8 @@ resource "aws_secretsmanager_secret_version" "registry_credentials" {
 
 module "orchestration_cluster" {
   # clickable link
-  # https://github.com/camunda/camunda-deployment-references/commit/11081f81ab26396b9a0caa41c8049735777c4e20
-  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/orchestration-cluster?ref=11081f81ab26396b9a0caa41c8049735777c4e20"
+  # https://github.com/camunda/camunda-deployment-references/commit/f645534a16e203a39bfab1cae30975d901b61303
+  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/orchestration-cluster?ref=f645534a16e203a39bfab1cae30975d901b61303"
 
   prefix              = "${var.prefix}-oc" # s3 bucket name in workflow destroy step must be updated as well
   ecs_cluster_id      = data.terraform_remote_state.stable.outputs.ecs_cluster_id
