@@ -66,6 +66,16 @@
         "logs:GetLogEvents"
       ],
       "Resource": "*"
+    },
+    {
+      "Sid": "AuroraGlobalPermissions",
+      "Effect": "Allow",
+      "Action": [
+        "rds:DescribeGlobalClusters",
+        "rds:SwitchoverGlobalCluster",
+        "rds:FailoverGlobalCluster"
+      ],
+      "Resource": "*"
     }
   ]
 }
