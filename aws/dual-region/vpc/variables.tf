@@ -37,7 +37,7 @@ variable "default_tags" {
 
 variable "region_0" {
   type        = string
-  default     = "eu-west-2"
+  default     = "eu-west-1"
   description = "AWS region for the primary (owner) cluster"
 }
 

@@ -1,9 +1,11 @@
-# Shared Makefile for dual-region app/ state
-# Included by per-environment Makefiles (prod/Makefile)
-# Run from the environment subdirectory: cd prod && make plan
+# Shared Makefile for the dual-region states (vpc/, infra/, app/)
+# Included by per-environment Makefiles (dev/Makefile, prod/Makefile)
+# Run from the environment subdirectory: cd dev && make plan
 
 BACKEND_KEY ?= $(error BACKEND_KEY not set)
 TFVARS_FILE ?= $(error TFVARS_FILE not set)
+# Human-readable name of the including state, shown by `make help`.
+STATE_DESC ?= $(error STATE_DESC not set)
 TERRAFORM_DIR ?= ..
 
 # Extra -var flags injected by the per-environment Makefile (e.g. rotating
@@ -27,7 +29,7 @@ endif
 .PHONY: help init plan apply deploy destroy clean show-vars
 
 help: ## Show this help message
-	@echo "Dual-Region Camunda App (Zeebe brokers, gateway, connectors) — $(ENV)"
+	@echo "$(STATE_DESC) — $(ENV)"
 	@echo "Usage: make <target>"
 	@echo "  init | plan | apply | deploy | destroy | clean | show-vars"
 
@@ -42,7 +44,7 @@ apply: init ## Apply the infrastructure changes
 
 deploy: apply ## Alias for apply
 
-destroy: init ## Destroy the Camunda app services. Run BEFORE destroying infra/.
+destroy: init ## Destroy this state. States must be destroyed in order: app → infra → vpc.
 	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) destroy $(AUTO_APPROVE) -var-file=$(TFVARS_FILE) $(EXTRA_TF_VARS)
 
 clean: ## Clean terraform files
