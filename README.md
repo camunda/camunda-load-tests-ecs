@@ -115,13 +115,11 @@ Alternatively, use the **Deploy/Destroy ECS Benchmark and Load Test** GitHub Act
 
 #### Automated weekly benchmarks
 
-A scheduled workflow (`ecs-benchmark-weekly.yml`) runs every Monday at 06:00 UTC. It:
-1. Computes a date-based name (e.g., `weekly-2026-03-17`)
-2. Pins the `SNAPSHOT` images to their current `@sha256:` digests
-3. Destroys the previous week's benchmark
-4. Deploys the current week's benchmark with the pinned images
-
-It can also be triggered manually via `workflow_dispatch`.
+The weekly rotation is driven from the `camunda/camunda` repository, not from here. It calls
+the **Deploy/Destroy ECS Benchmark and Load Test** workflow via `workflow_call`: once with
+`destroy_only` to tear down the previous week's benchmark, then again with a date-based
+`benchmark_name` (e.g., `weekly-2026-03-17`) and digest-pinned images to deploy the new one.
+This repository therefore holds no scheduled workflow.
 
 #### Monitoring / Prometheus discovery
 
