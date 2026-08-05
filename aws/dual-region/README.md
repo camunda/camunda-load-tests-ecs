@@ -106,14 +106,8 @@ make apply \
   CAMUNDA_AUTH_USERNAME=admin \
   CAMUNDA_AUTH_PASSWORD_SECRET_ARN=<region-0-password-secret-arn> \
   CAMUNDA_AUTH_PASSWORD_KMS_KEY_ARN=<region-0-kms-key-arn> \
-  FORCE_NEW_DEPLOYMENT=true \
-  LOAD_TEST_DURATION=6h
+  FORCE_NEW_DEPLOYMENT=true
 ```
-
-`LOAD_TEST_DURATION` defaults to `6h`. Terraform creates an EventBridge Scheduler
-schedule that scales both load-test services to zero when the duration expires.
-Override it with another Terraform duration such as `30m` when running a shorter
-test.
 
 The region 0 ALB endpoint can be obtained from the infra state:
 

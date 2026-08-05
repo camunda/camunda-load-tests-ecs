@@ -129,14 +129,3 @@ variable "force_new_deployment" {
   description = "Whether to force redeployment of resources"
   default     = false
 }
-
-variable "load_test_duration" {
-  type        = string
-  description = "How long the load-test services should run before ECS scales them to zero (Go duration, e.g. 6h or 30m)."
-  default     = "6h"
-
-  validation {
-    condition     = can(timeadd("2000-01-01T00:00:00Z", var.load_test_duration))
-    error_message = "load_test_duration must be a valid Go-style duration accepted by Terraform timeadd, such as 6h or 30m."
-  }
-}
