@@ -109,7 +109,7 @@ jobs:
       - name: Deploy load test over REST
         working-directory: aws/load_test/dev
         run: |
-          make deploy BENCHMARK_NAME="${{ inputs.benchmark_name }}-lt" \
+          make deploy BENCHMARK_NAME="${{ inputs.benchmark_name }}-r0" \
             DUAL_REGION=true \
             DUAL_REGION_INFRA_STATE_KEY="dual-region/infra/dev-${{ inputs.benchmark_name }}.tfstate" \
             REST_ADDRESS="${{ inputs.endpoint }}" \
