@@ -119,8 +119,10 @@ jobs:
         run: |
           SECRET_ARN=$(terraform output -raw admin_user_password_secret_region_0_arn)
           KMS_ARN=$(aws secretsmanager describe-secret --secret-id "$SECRET_ARN" --query KmsKeyId --output text)
+          REST_ADDRESS="http://$(terraform output -raw region_0_alb_endpoint):80"
           echo "secret_arn=${SECRET_ARN}" >> "$GITHUB_OUTPUT"
           echo "kms_arn=${KMS_ARN}" >> "$GITHUB_OUTPUT"
+          echo "rest_address=${REST_ADDRESS}" >> "$GITHUB_OUTPUT"
 
       - name: Deploy load generator (in-VPC, region_0)
         working-directory: ./aws/load_test/dev
@@ -128,6 +130,8 @@ jobs:
           make deploy BENCHMARK_NAME=${{ steps.names.outputs.load_name }} \
             DUAL_REGION=true \
             DUAL_REGION_INFRA_STATE_KEY=${{ steps.names.outputs.infra_key }} \
+            REST_ADDRESS="${{ steps.auth.outputs.rest_address }}" \
+            PREFER_REST_OVER_GRPC=true \
             STARTER_IMAGE="${{ inputs.starter_image }}" \
             WORKER_IMAGE="${{ inputs.worker_image }}" \
             CAMUNDA_AUTH_USERNAME=admin \
