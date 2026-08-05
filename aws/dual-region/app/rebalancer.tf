@@ -1,8 +1,35 @@
 ################################################################
 #   Rebalancer - Region 0                                      #
-#   Scheduled Lambda (every 5 min) that POSTs the broker       #
-#   management rebalance endpoint to redistribute partition    #
-#   leadership. Runs in-VPC to reach the private Cloud Map DNS.#
+################################################################
+#
+# Purpose
+# -------
+# Keeps partition leadership pinned to region 0 for the duration of a
+# dual-region load test.
+#
+# The cluster uses ZONE_AWARE partitioning with region 0 at priority 1000 and
+# region 1 at priority 500 (see locals.tf), so the *intent* is that every
+# partition leader lives in region 0 and region 1 holds followers only. Raft
+# priority election is best-effort though: any leader change (broker restart,
+# ECS task replacement, a cross-region Raft hiccup, a failover experiment) can
+# leave a partition led from region 1, and Zeebe does not move it back on its
+# own. A leader in region 1 makes every command from the region-0 load
+# generators pay an extra Transit Gateway round trip, which skews the
+# throughput and latency numbers the load test is meant to measure.
+#
+# POSTing the broker management endpoint /actuator/rebalance asks the cluster to
+# re-run priority election, handing leadership back to the highest-priority
+# (region 0) replicas.
+#
+# Cadence
+# -------
+# Every 5 minutes. Rebalancing is a no-op when leadership already matches the
+# priorities, so a short interval is cheap and bounds how long a load test can
+# run with drifted leadership (worst case ~5 min of skewed measurements)
+# without the churn of rebalancing continuously.
+#
+# The Lambda runs inside the region-0 VPC because the broker management port
+# (9600) is only reachable via the private Cloud Map DNS record.
 ################################################################
 
 locals {

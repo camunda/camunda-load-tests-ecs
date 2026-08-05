@@ -92,7 +92,12 @@ dual-region/infra/dev-camunda-dr.tfstate
 
 ### 4. Load test
 
-The load test is deployed in the existing region 0 stable VPC/ECS cluster.
+With `DUAL_REGION=true` the load test is deployed into the **dual-region
+infra** region-0 ECS cluster (`<cluster_name>-r0-cluster`) using the
+dual-region region-0 security groups — not the `stable` ECS cluster or SGs
+(`aws/load_test/config.tf`). The subnets are the region-0 private subnets from
+the same infra state, which under `byo_vpc = true` are the `stable/dev` VPC's
+subnets, so the tasks land in the same VPC as the region-0 brokers.
 Use the load-test module from its environment directory:
 
 ```bash
@@ -147,9 +152,9 @@ and the admin authentication variables shown above.
 
 ## Cleaning up a run from GitHub Actions
 
-The **Cleanup Dual-Region Load Test** workflow destroys the complete stack for
-a supplied benchmark name, not just the load-test ECS services. It runs in the
-required reverse order:
+Run the **Deploy/Destroy Dual-Region Load Test** workflow with `destroy_only`
+set. It destroys the complete stack for a supplied benchmark name, not just the
+load-test ECS services, in the required reverse order:
 
 ```text
 load_test -> app (orchestration cluster/connectors) -> infra (Aurora Global/ECS) -> vpc

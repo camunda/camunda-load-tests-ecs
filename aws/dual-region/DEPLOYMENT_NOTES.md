@@ -141,7 +141,12 @@ This gives (region_0 / eu-west-1 only):
   `orchestration-cluster.dev-camunda-dr-r0-oc.service.local` (gRPC 26500,
   REST 8080) — the plain Cloud Map DNS name that resolves to the broker task IPs;
 - `prefix = dev-camunda-dr-r0-lt`, state `dev/load_tests/camunda-dr-r0-lt.tfstate`;
-- tasks run in the `stable/dev` ECS cluster, same VPC as the region_0 brokers.
+- tasks run in the dual-region infra region_0 ECS cluster
+  (`dev-camunda-dr-r0-cluster`) with the dual-region region_0 security groups —
+  `DUAL_REGION=true` makes `aws/load_test/config.tf` read the cluster, subnets
+  and SGs from the dual-region infra state instead of the `stable` state. The
+  subnets are still the `stable/dev` VPC's private subnets (`byo_vpc = true`),
+  so the tasks share the VPC with the region_0 brokers.
 
 Why this works without SG changes: the region_0 broker SG
 (`dual-region/infra/security.tf`, `camunda_ports_region_0`) allows all
@@ -271,16 +276,31 @@ where earlier the key was the fixed `dual-region/<state>/dev.tfstate`.
 Before the first rotating deploy, retire the old stack so its resources don't
 leak (it is an ephemeral benchmark cluster — destroying is expected):
 
+Destroy the old-keyed stack in `app` → `infra` → `vpc` order, using the OLD
+backend keys. Each command may only pass the variables that state actually
+declares (see each module's `variables.tf`) — Terraform errors on undeclared
+variables:
+
 ```bash
-# Destroy the old-keyed stack (app → infra → vpc) using the OLD keys.
-for s in app infra vpc; do
-  terraform -chdir=aws/dual-region/$s init -reconfigure \
-    -backend-config="key=dual-region/$s/dev.tfstate"
-  terraform -chdir=aws/dual-region/$s destroy -auto-approve \
-    -var-file=dev/terraform.tfvars -var="cluster_name=dev-camunda-dr" \
-    -var="vpc_state_path=dual-region/vpc/dev.tfstate" \
-    -var="infra_state_path=dual-region/infra/dev.tfstate"
-done
+# app/ declares infra_state_path (no cluster_name).
+terraform -chdir=aws/dual-region/app init -reconfigure \
+  -backend-config="key=dual-region/app/dev.tfstate"
+terraform -chdir=aws/dual-region/app destroy -auto-approve \
+  -var-file=dev/terraform.tfvars \
+  -var="infra_state_path=dual-region/infra/dev.tfstate"
+
+# infra/ declares cluster_name and vpc_state_path (no infra_state_path).
+terraform -chdir=aws/dual-region/infra init -reconfigure \
+  -backend-config="key=dual-region/infra/dev.tfstate"
+terraform -chdir=aws/dual-region/infra destroy -auto-approve \
+  -var-file=dev/terraform.tfvars -var="cluster_name=dev-camunda-dr" \
+  -var="vpc_state_path=dual-region/vpc/dev.tfstate"
+
+# vpc/ declares cluster_name only (neither state path).
+terraform -chdir=aws/dual-region/vpc init -reconfigure \
+  -backend-config="key=dual-region/vpc/dev.tfstate"
+terraform -chdir=aws/dual-region/vpc destroy -auto-approve \
+  -var-file=dev/terraform.tfvars -var="cluster_name=dev-camunda-dr"
 ```
 
 Afterwards all deploys go through the per-env Makefiles with `BENCHMARK_NAME`.
