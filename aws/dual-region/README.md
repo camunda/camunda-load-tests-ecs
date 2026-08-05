@@ -155,8 +155,10 @@ required reverse order:
 load_test -> app (orchestration cluster/connectors) -> infra (Aurora Global/ECS) -> vpc
 ```
 
-The stable VPC states are never touched. Set `destroy_vpc` to false if the
-VPC and peering should be retained for another run. Select the same
+`destroy_vpc` defaults to true. The dual-region VPC state uses the existing
+stable VPCs, so destroying it removes this run's cross-region peering and
+related networking resources, but does not destroy the stable VPCs themselves.
+Keep it false only when retaining the peering for another run. Select the same
 database engine that was used during deployment so Terraform evaluates the
 Aurora resources consistently.
 
