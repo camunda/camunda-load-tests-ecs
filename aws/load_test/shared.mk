@@ -13,6 +13,7 @@ TERRAFORM_DIR ?= ..
 # Region to deploy load test resources into (state backend stays eu-west-1)
 AWS_REGION ?= eu-west-1
 FORCE_NEW_DEPLOYMENT ?= false
+LOAD_TEST_DURATION ?= 6h
 STARTER_IMAGE ?= registry.camunda.cloud/team-zeebe/starter:SNAPSHOT
 WORKER_IMAGE ?= registry.camunda.cloud/team-zeebe/worker:SNAPSHOT
 # Basic auth (empty = disabled; regular unprotected-API benchmarks run without it)
@@ -84,6 +85,7 @@ plan: init ## Plan the infrastructure changes
 		-var-file=$(TFVARS_FILE) \
 		-var="aws_region=$(AWS_REGION)" \
 		-var="force_new_deployment=$(FORCE_NEW_DEPLOYMENT)" \
+		-var="load_test_duration=$(LOAD_TEST_DURATION)" \
 		-var="prefix=$(PREFIX)" \
 		-var="camunda_host=$(CAMUNDA_HOST)" \
 		-var="grpc_address=$(GRPC_ADDRESS)" \
@@ -103,6 +105,7 @@ apply: init ## Apply the infrastructure changes
 		-var-file=$(TFVARS_FILE) \
 		-var="aws_region=$(AWS_REGION)" \
 		-var="force_new_deployment=$(FORCE_NEW_DEPLOYMENT)" \
+		-var="load_test_duration=$(LOAD_TEST_DURATION)" \
 		-var="prefix=$(PREFIX)" \
 		-var="camunda_host=$(CAMUNDA_HOST)" \
 		-var="grpc_address=$(GRPC_ADDRESS)" \
