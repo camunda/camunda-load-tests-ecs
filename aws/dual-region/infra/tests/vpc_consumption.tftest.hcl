@@ -125,3 +125,37 @@ run "azs_derived_from_subnets" {
     error_message = "local.region_1_azs should be derived from the stubbed subnet AZs (region 1)"
   }
 }
+
+run "remote_access_cidrs_are_per_region" {
+  command = plan
+
+  # Regression guard: a single shared CIDR list made one region's LBs unreachable.
+  # Each region's remote-access SG must allow its own VPC CIDR, not the other's.
+  assert {
+    condition     = join(",", local.remote_access_cidrs_region_0) == "10.111.0.0/16"
+    error_message = "region 0 remote-access CIDRs should derive from region_0_vpc_cidr"
+  }
+
+  assert {
+    condition     = join(",", local.remote_access_cidrs_region_1) == "10.222.0.0/16"
+    error_message = "region 1 remote-access CIDRs should derive from region_1_vpc_cidr"
+  }
+}
+
+run "remote_access_cidrs_append_operator_override" {
+  command = plan
+
+  variables {
+    limit_access_to_cidrs = ["203.0.113.0/24"]
+  }
+
+  assert {
+    condition     = join(",", local.remote_access_cidrs_region_0) == "10.111.0.0/16,203.0.113.0/24"
+    error_message = "operator-supplied CIDRs should be additive on top of region 0's VPC CIDR"
+  }
+
+  assert {
+    condition     = join(",", local.remote_access_cidrs_region_1) == "10.222.0.0/16,203.0.113.0/24"
+    error_message = "operator-supplied CIDRs should be additive on top of region 1's VPC CIDR"
+  }
+}

@@ -17,6 +17,14 @@ locals {
   prefix_region_0 = "${local.prefix}-r0"
   prefix_region_1 = "${local.prefix}-r1"
 
+  # Load balancer ingress CIDRs, resolved per region. Each region's SG must allow
+  # its *own* VPC CIDR — the load balancers of region N live in region N's VPC, so
+  # a single shared list would make one of the two regions unreachable.
+  # var.limit_access_to_cidrs is additive on top (operator override, e.g. an
+  # office CIDR or 0.0.0.0/0) and applies to both regions.
+  remote_access_cidrs_region_0 = distinct(concat([local.vpc.region_0_vpc_cidr], var.limit_access_to_cidrs))
+  remote_access_cidrs_region_1 = distinct(concat([local.vpc.region_1_vpc_cidr], var.limit_access_to_cidrs))
+
   database_port = var.database_engine == "mysql" ? 3306 : 5432
   db_seed_image = var.database_engine == "mysql" ? "public.ecr.aws/docker/library/mysql:8.4" : "public.ecr.aws/docker/library/postgres:17-alpine"
   db_seed_command = var.database_engine == "mysql" ? (<<-EOT

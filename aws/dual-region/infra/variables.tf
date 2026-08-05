@@ -83,8 +83,8 @@ variable "default_tags" {
 
 variable "limit_access_to_cidrs" {
   type        = list(string)
-  default     = ["0.0.0.0/0"]
-  description = "List of CIDR blocks to allow access to LoadBalancers"
+  default     = []
+  description = "Extra CIDR blocks to allow access to the LoadBalancers, on top of each region's own VPC CIDR (which is always allowed and is derived from the vpc/ state). Leave empty to keep both regions reachable only from inside their own VPC; set e.g. [\"0.0.0.0/0\"] to expose them publicly."
 }
 
 variable "ports" {
@@ -98,7 +98,7 @@ variable "ports" {
     zeebe_gateway_network_port            = 26500
     zeebe_broker_network_command_api_port = 26501
   }
-  description = "The ports to open for the security groups within the VPC"
+  description = "The ports to open for the security groups within the VPC. Both database ports are listed (mysql 3306, postgresql 5432); Aurora itself only listens on the one matching var.database_engine"
 }
 
 ################################################################
@@ -113,14 +113,14 @@ variable "db_name" {
 
 variable "db_admin_username" {
   type        = string
-  description = "Admin username for the Aurora PostgreSQL cluster"
+  description = "Admin username for the Aurora Global cluster (engine per var.database_engine)"
   default     = "camunda_admin"
   sensitive   = true
 }
 
 variable "db_admin_password" {
   type        = string
-  description = "Optional override for the Aurora PostgreSQL admin password. If empty, a random password is generated."
+  description = "Optional override for the Aurora Global cluster admin password. If empty, a random password is generated."
   default     = ""
   sensitive   = true
 }

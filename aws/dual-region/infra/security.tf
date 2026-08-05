@@ -133,7 +133,7 @@ resource "aws_security_group" "remote_access_region_0" {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = var.limit_access_to_cidrs
+    cidr_blocks = local.remote_access_cidrs_region_0
     description = "Allow inbound HTTP"
   }
 
@@ -141,7 +141,7 @@ resource "aws_security_group" "remote_access_region_0" {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = var.limit_access_to_cidrs
+    cidr_blocks = local.remote_access_cidrs_region_0
     description = "Allow inbound HTTPS"
   }
 
@@ -149,7 +149,7 @@ resource "aws_security_group" "remote_access_region_0" {
     from_port   = 26500
     to_port     = 26500
     protocol    = "tcp"
-    cidr_blocks = var.limit_access_to_cidrs
+    cidr_blocks = local.remote_access_cidrs_region_0
     description = "Allow inbound gRPC"
   }
 
@@ -157,7 +157,7 @@ resource "aws_security_group" "remote_access_region_0" {
     from_port   = 9600
     to_port     = 9600
     protocol    = "tcp"
-    cidr_blocks = var.limit_access_to_cidrs
+    cidr_blocks = local.remote_access_cidrs_region_0
     description = "Allow inbound management"
   }
 
@@ -165,7 +165,7 @@ resource "aws_security_group" "remote_access_region_0" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = var.limit_access_to_cidrs
+    cidr_blocks = local.remote_access_cidrs_region_0
     description = "Allow outbound to remote CIDRs"
   }
 
@@ -316,7 +316,7 @@ resource "aws_security_group" "remote_access_region_1" {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = var.limit_access_to_cidrs
+    cidr_blocks = local.remote_access_cidrs_region_1
     description = "Allow inbound HTTP"
   }
 
@@ -324,7 +324,7 @@ resource "aws_security_group" "remote_access_region_1" {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = var.limit_access_to_cidrs
+    cidr_blocks = local.remote_access_cidrs_region_1
     description = "Allow inbound HTTPS"
   }
 
@@ -332,7 +332,7 @@ resource "aws_security_group" "remote_access_region_1" {
     from_port   = 26500
     to_port     = 26500
     protocol    = "tcp"
-    cidr_blocks = var.limit_access_to_cidrs
+    cidr_blocks = local.remote_access_cidrs_region_1
     description = "Allow inbound gRPC"
   }
 
@@ -340,7 +340,7 @@ resource "aws_security_group" "remote_access_region_1" {
     from_port   = 9600
     to_port     = 9600
     protocol    = "tcp"
-    cidr_blocks = var.limit_access_to_cidrs
+    cidr_blocks = local.remote_access_cidrs_region_1
     description = "Allow inbound management"
   }
 
@@ -348,7 +348,7 @@ resource "aws_security_group" "remote_access_region_1" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = var.limit_access_to_cidrs
+    cidr_blocks = local.remote_access_cidrs_region_1
     description = "Allow outbound to remote CIDRs"
   }
 
