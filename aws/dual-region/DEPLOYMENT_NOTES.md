@@ -44,6 +44,14 @@ cd aws/dual-region/infra/dev && make deploy   # Aurora Global, ECS clusters, LBs
 cd aws/dual-region/app/dev   && make deploy   # Camunda brokers (~15-20 min for first cross-region Raft quorum)
 ```
 
+For a UI-triggered deployment, run the **Deploy Dual-Region Load Test** workflow
+from GitHub Actions. It performs the same `vpc → infra → app → load_test`
+sequence. Select `postgresql` or `mysql`, provide the REST endpoint (including
+`http://`), and the workflow passes `DUAL_REGION=true`. The load test is forced
+to prefer REST because basic authentication is not supported by the gRPC path.
+The MySQL Camunda image is selected automatically when no image override is
+provided.
+
 > If `dual-region/vpc/dev` errors with `No stored state was found ... stable_region_1`,
 > it means `aws/stable/us-east-1` was never applied — run it first.
 

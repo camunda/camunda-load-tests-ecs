@@ -39,6 +39,17 @@ variable "secondary_storage_type" {
   }
 }
 
+variable "database_engine" {
+  type        = string
+  default     = "postgresql"
+  description = "Aurora Global database engine: 'postgresql' or 'mysql'"
+
+  validation {
+    condition     = contains(["postgresql", "mysql"], var.database_engine)
+    error_message = "Must be 'postgresql' or 'mysql'."
+  }
+}
+
 ################################
 # Variables                    #
 ################################
@@ -80,6 +91,7 @@ variable "ports" {
   type = map(number)
   default = {
     mysql                                 = 3306
+    postgresql                            = 5432
     camunda_web_ui                        = 8080
     camunda_metrics_endpoint              = 9600
     zeebe_gateway_cluster_port            = 26502

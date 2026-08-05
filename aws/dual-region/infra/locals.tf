@@ -17,6 +17,42 @@ locals {
   prefix_region_0 = "${local.prefix}-r0"
   prefix_region_1 = "${local.prefix}-r1"
 
+  database_port = var.database_engine == "mysql" ? 3306 : 5432
+  db_seed_image = var.database_engine == "mysql" ? "public.ecr.aws/docker/library/mysql:8.4" : "public.ecr.aws/docker/library/postgres:17-alpine"
+  db_seed_command = var.database_engine == "mysql" ? (<<-EOT
+    set -euo pipefail
+
+    if [ -z "$${IAM_DB_USERS}" ]; then
+      echo "No IAM_DB_USERS provided; nothing to do."
+      exit 0
+    fi
+
+    for user in $${IAM_DB_USERS}; do
+      mysql --host="$${AURORA_ENDPOINT}" --port="$${AURORA_PORT}" \\
+        --user="$${AURORA_ADMIN_USERNAME}" --password="$${AURORA_ADMIN_PASSWORD}" \\
+        --ssl-mode=REQUIRED \\
+        -e "CREATE USER IF NOT EXISTS '$${user}'@'%' IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS' REQUIRE SSL; GRANT ALL PRIVILEGES ON \\`$${AURORA_DB_NAME}\\`.* TO '$${user}'@'%'; FLUSH PRIVILEGES;"
+    done
+  EOT
+    ) : (<<-EOT
+    set -euo pipefail
+
+    if [ -z "$${IAM_DB_USERS}" ]; then
+      echo "No IAM_DB_USERS provided; nothing to do."
+      exit 0
+    fi
+
+    for user in $${IAM_DB_USERS}; do
+      psql "host=$${AURORA_ENDPOINT} port=$${AURORA_PORT} dbname=$${AURORA_DB_NAME} user=$${AURORA_ADMIN_USERNAME} password=$${AURORA_ADMIN_PASSWORD} sslmode=require" \\
+        -v ON_ERROR_STOP=1 \\
+        -c "DO \\$\\$ BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$${user}') THEN CREATE ROLE \\\"$${user}\\\" WITH LOGIN; END IF; END \\$\\$;" \\
+        -c "GRANT rds_iam TO \\\"$${user}\\\";" \\
+        -c "GRANT ALL PRIVILEGES ON DATABASE \\\"$${AURORA_DB_NAME}\\\" TO \\\"$${user}\\\";" \\
+        -c "GRANT USAGE, CREATE ON SCHEMA public TO \\\"$${user}\\\";"
+    done
+  EOT
+  )
+
   # AZs of the private subnets, derived from the vpc/ outputs.
   # Used by Aurora to populate the cluster's availability_zones argument.
   region_0_azs = distinct([for s in data.aws_subnet.region_0_private : s.availability_zone])

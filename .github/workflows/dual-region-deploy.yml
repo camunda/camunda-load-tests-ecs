@@ -1,0 +1,121 @@
+name: Deploy Dual-Region Load Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      benchmark_name:
+        description: 'Run name (letters, numbers and hyphens; keep it short)'
+        required: true
+        type: string
+        default: 'camunda-dr-ui'
+      database_engine:
+        description: 'Aurora database engine'
+        required: true
+        type: choice
+        options:
+          - postgresql
+          - mysql
+        default: postgresql
+      endpoint:
+        description: 'REST endpoint used by the load test, including scheme (for example http://host:80)'
+        required: true
+        type: string
+      camunda_image:
+        description: 'Optional Camunda image URI (required for MySQL unless using the default image)'
+        required: false
+        type: string
+        default: ''
+      starter_image:
+        description: 'Starter image URI'
+        required: false
+        type: string
+        default: 'registry.camunda.cloud/team-zeebe/starter:SNAPSHOT'
+      worker_image:
+        description: 'Worker image URI'
+        required: false
+        type: string
+        default: 'registry.camunda.cloud/team-zeebe/worker:SNAPSHOT'
+
+concurrency:
+  group: dual-region-${{ inputs.benchmark_name }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-west-1
+
+jobs:
+  deploy:
+    name: Deploy VPC, infra, app and load test
+    runs-on: ubuntu-latest
+    env:
+      CI: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Import secrets from Vault
+        uses: hashicorp/vault-action@2c5827061f1ad91ca97897d6257ebe638e033699
+        with:
+          url: ${{ secrets.VAULT_ADDR }}
+          method: approle
+          roleId: ${{ secrets.VAULT_ROLE_ID }}
+          secretId: ${{ secrets.VAULT_SECRET_ID }}
+          secrets: |
+            secret/data/products/zeebe/ci/common AWS_CORE_FOUNDATION_ACCESS_KEY | AWS_ACCESS_KEY_ID;
+            secret/data/products/zeebe/ci/common AWS_CORE_FOUNDATION_SECRET_KEY | AWS_SECRET_ACCESS_KEY;
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~1.7.0'
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate run name
+        run: aws/dual-region/scripts/validate-name.sh "dev-${{ inputs.benchmark_name }}"
+
+      - name: Deploy VPC
+        working-directory: aws/dual-region/vpc/dev
+        run: make deploy BENCHMARK_NAME="${{ inputs.benchmark_name }}"
+
+      - name: Deploy infra
+        working-directory: aws/dual-region/infra/dev
+        run: make deploy BENCHMARK_NAME="${{ inputs.benchmark_name }}" DATABASE_ENGINE="${{ inputs.database_engine }}"
+
+      - name: Deploy app
+        working-directory: aws/dual-region/app/dev
+        env:
+          CAMUNDA_IMAGE: ${{ inputs.camunda_image }}
+          DATABASE_ENGINE: ${{ inputs.database_engine }}
+        run: |
+          if [ -z "$CAMUNDA_IMAGE" ] && [ "$DATABASE_ENGINE" = mysql ]; then
+            CAMUNDA_IMAGE="030846071718.dkr.ecr.eu-west-1.amazonaws.com/aurora-mysql-test/camunda:8.10-SNAPSHOT-mysql"
+          fi
+          if [ -n "$CAMUNDA_IMAGE" ]; then
+            make deploy BENCHMARK_NAME="${{ inputs.benchmark_name }}" CAMUNDA_IMAGE="$CAMUNDA_IMAGE"
+          else
+            make deploy BENCHMARK_NAME="${{ inputs.benchmark_name }}"
+          fi
+
+      - name: Resolve admin credentials
+        id: auth
+        working-directory: aws/dual-region/infra
+        run: |
+          secret_arn=$(terraform output -raw admin_user_password_secret_region_0_arn)
+          kms_arn=$(aws secretsmanager describe-secret --secret-id "$secret_arn" --query KmsKeyId --output text)
+          echo "secret_arn=$secret_arn" >> "$GITHUB_OUTPUT"
+          echo "kms_arn=$kms_arn" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy load test over REST
+        working-directory: aws/load_test/dev
+        run: |
+          make deploy BENCHMARK_NAME="${{ inputs.benchmark_name }}-lt" \
+            DUAL_REGION=true \
+            DUAL_REGION_INFRA_STATE_KEY="dual-region/infra/dev-${{ inputs.benchmark_name }}.tfstate" \
+            REST_ADDRESS="${{ inputs.endpoint }}" \
+            PREFER_REST_OVER_GRPC=true \
+            STARTER_IMAGE="${{ inputs.starter_image }}" \
+            WORKER_IMAGE="${{ inputs.worker_image }}" \
+            CAMUNDA_AUTH_USERNAME=admin \
+            CAMUNDA_AUTH_PASSWORD_SECRET_ARN="${{ steps.auth.outputs.secret_arn }}" \
+            CAMUNDA_AUTH_PASSWORD_KMS_KEY_ARN="${{ steps.auth.outputs.kms_arn }}"

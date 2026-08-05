@@ -21,42 +21,15 @@ resource "aws_ecs_task_definition" "db_seed" {
   container_definitions = jsonencode([
     {
       name      = "db-seed"
-      image     = "public.ecr.aws/docker/library/mysql:8.4"
+      image     = local.db_seed_image
       essential = true
 
       entryPoint = ["/bin/sh", "-lc"]
-      command = [
-        <<-EOT
-          set -euo pipefail
-
-          if [ -z "$${IAM_DB_USERS}" ]; then
-            echo "No IAM_DB_USERS provided; nothing to do."
-            exit 0
-          fi
-
-          echo "Seeding database users for IAM auth: $${IAM_DB_USERS}"
-
-          for user in $${IAM_DB_USERS}; do
-            echo "Ensuring user exists: $${user}"
-
-            mysql \
-              --host="$${AURORA_ENDPOINT}" \
-              --port="$${AURORA_PORT}" \
-              --user="$${AURORA_ADMIN_USERNAME}" \
-              --password="$${AURORA_ADMIN_PASSWORD}" \
-              --ssl-mode=REQUIRED \
-              -e "CREATE USER IF NOT EXISTS '$${user}'@'%' IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS' REQUIRE SSL;
-                  GRANT ALL PRIVILEGES ON \`$${AURORA_DB_NAME}\`.* TO '$${user}'@'%';
-                  FLUSH PRIVILEGES;"
-          done
-
-          echo "DB seeding complete."
-        EOT
-      ]
+      command    = [local.db_seed_command]
 
       environment = [
         { name = "AURORA_ENDPOINT", value = module.aurora_global[0].primary_cluster_endpoint },
-        { name = "AURORA_PORT", value = "3306" },
+        { name = "AURORA_PORT", value = tostring(local.database_port) },
         { name = "AURORA_DB_NAME", value = var.db_name },
         { name = "AURORA_ADMIN_USERNAME", value = var.db_admin_username },
         { name = "IAM_DB_USERS", value = join(" ", var.db_seed_iam_usernames) }
