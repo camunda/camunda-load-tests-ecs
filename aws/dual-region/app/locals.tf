@@ -104,23 +104,8 @@ locals {
       value = "rdbms"
     },
     {
-      name = "CAMUNDA_DATA_SECONDARYSTORAGE_RDBMS_URL"
-      # rewriteBatchedStatements collapses MyBatis BATCH-executor flushes into a single
-      # multi-row INSERT on MySQL. Without it, MySQL Connector/J sends one row per
-      # round trip, which is fine same-region but serializes the whole flush over the
-      # ~69ms cross-region RTT (the observed >30s MySQL flush.latency vs ~2s on
-      # Postgres, whose pgjdbc pipelines batches natively regardless of this setting).
-      #
-      # socketTimeout/connectTimeout bound the network I/O on a connection. On an
-      # unplanned Aurora failover, a connection that is mid-flush blocks on a dead
-      # socket: Hikari can't detect it (liveness is only checked on borrow/return, not
-      # on a checked-out busy connection) and keepaliveTime only probes idle ones, so
-      # the flush hangs for the full OS TCP-retransmit window (~5 min) before the
-      # failover plugin can react. socketTimeout caps that hung read; once it errors,
-      # the aws-wrapper failover plugin reconnects to the promoted writer within
-      # seconds. Keep socketTimeout above the worst healthy cross-region flush latency
-      # so it never trips a slow-but-alive flush.
-      value = "${replace(local.infra.aurora_jdbc_url, "/wrapperPlugins=[^&]*/", "wrapperPlugins=iam,failover,efm")}&rewriteBatchedStatements=true&socketTimeout=30000&connectTimeout=10000"
+      name  = "CAMUNDA_DATA_SECONDARYSTORAGE_RDBMS_URL"
+      value = local.infra.aurora_jdbc_url
     },
     {
       name  = "CAMUNDA_DATA_SECONDARYSTORAGE_RDBMS_USERNAME"
@@ -134,18 +119,6 @@ locals {
       name  = "SPRING_DATASOURCE_DRIVER_CLASS_NAME"
       value = "software.amazon.jdbc.Driver"
     },
-    {
-      name  = "CAMUNDA_DATA_SECONDARYSTORAGE_RDBMS_ASYNCREPLICATION_ENABLED"
-      value = "true"
-    },
-    {
-      name  = "CAMUNDA_DATA_SECONDARYSTORAGE_RDBMS_ASYNCREPLICATION_PAUSEONMAXLAGEXCEEDED"
-      value = "true"
-    },
-    { 
-      name = "CAMUNDA_DATA_SECONDARYSTORAGE_RDBMS_CONNECTIONPOOL_KEEPALIVETIME"
-      value = "30s"
-    }
   ] : []
 
   opensearch_env_vars_region_0 = local.infra.secondary_storage_type == "opensearch" ? [
