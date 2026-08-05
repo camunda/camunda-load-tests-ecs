@@ -2,7 +2,7 @@ terraform {
   required_version = ">= 1.7.0"
   backend "s3" {
     bucket       = "zeebe-terraform-states"
-    key = "monitoring/${var.prefix}.tfstate"
+    key          = "monitoring/${var.prefix}.tfstate"
     region       = "eu-west-1"
     use_lockfile = true
   }

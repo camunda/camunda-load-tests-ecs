@@ -43,7 +43,7 @@ resource "aws_security_group" "allow_necessary_camunda_ports_within_vpc" {
     cidr_blocks = [module.vpc.vpc_cidr_block]
     description = "Allow outbound PostgreSQL to Aurora"
   }
-  
+
   tags = {
     Name = "allow_necessary_camunda_ports_within_vpc"
   }

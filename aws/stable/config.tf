@@ -2,7 +2,7 @@ terraform {
   required_version = ">= 1.7.0"
   backend "s3" {
     bucket       = "zeebe-terraform-states"
-    key = "stable/terraform.tfstate"
+    key          = "stable/terraform.tfstate"
     region       = "eu-west-1"
     use_lockfile = true
   }
