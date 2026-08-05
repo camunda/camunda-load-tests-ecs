@@ -73,8 +73,7 @@ resource "aws_ecs_task_definition" "starter" {
         { name = "LOAD_TESTER_STARTER_BUSINESS_KEY", value = "businessKey" },
         { name = "LOAD_TESTER_STARTER_PAYLOAD_PATH", value = "bpmn/typical_payload.json" },
         { name = "JDK_JAVA_OPTIONS", value = "-XX:+HeapDumpOnOutOfMemoryError" },
-        { name = "CAMUNDA_LOG_LEVEL", value = "INFO" },
-        { name = "LOG_LEVEL", value = "INFO" }
+        { name = "LOG_LEVEL", value = "WARN" }
       ], local.basic_auth_env)
       secrets = local.basic_auth_secrets
       portMappings = [
