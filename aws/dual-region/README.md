@@ -145,7 +145,22 @@ run. For the current dual-region setup, do not use `PREFER_REST_OVER_GRPC=false`
 with basic authentication. Use `REST_ADDRESS`, `PREFER_REST_OVER_GRPC=true`,
 and the admin authentication variables shown above.
 
-## Destroying a run
+## Cleaning up a run from GitHub Actions
+
+The **Cleanup Dual-Region Load Test** workflow destroys the complete stack for
+a supplied benchmark name, not just the load-test ECS services. It runs in the
+required reverse order:
+
+```text
+load_test -> app (orchestration cluster/connectors) -> infra (Aurora Global/ECS) -> vpc
+```
+
+The stable VPC states are never touched. Set `destroy_vpc` to false if the
+VPC and peering should be retained for another run. Select the same
+database engine that was used during deployment so Terraform evaluates the
+Aurora resources consistently.
+
+## Destroying a run manually
 
 Destroy in reverse dependency order:
 
