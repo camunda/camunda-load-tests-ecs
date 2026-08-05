@@ -76,7 +76,7 @@ resource "aws_secretsmanager_secret_version" "registry_credentials_region_1" {
 
 resource "aws_secretsmanager_secret" "db_admin_password_region_0" {
   name                    = "${local.prefix_region_0}-db-admin-password"
-  description             = "Admin password for Aurora PostgreSQL (${local.prefix_region_0})"
+  description             = "Admin password for the Aurora Global cluster (${local.prefix_region_0})"
   recovery_window_in_days = 0
   kms_key_id              = local.secrets_kms_key_arn_region_0
 }
