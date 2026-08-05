@@ -10,6 +10,13 @@ locals {
   brokers_per_region  = 2
   replicas_per_region = local.replication_factor / 2
 
+  # The infra state emits "" (not null) for storage-mode-specific outputs, because
+  # Terraform drops null root outputs from remote state entirely. Treat both as absent.
+  rds_db_connect_policy_arns = {
+    region_0 = try(coalesce(local.infra.rds_db_connect_policy_region_0_arn, ""), "")
+    region_1 = try(coalesce(local.infra.rds_db_connect_policy_region_1_arn, ""), "")
+  }
+
 
   # Region-aware partitioning env vars
   # Note: CAMUNDA_CLUSTER_SIZE, REPLICATIONFACTOR, PARTITIONCOUNT, and INITIALCONTACTPOINTS

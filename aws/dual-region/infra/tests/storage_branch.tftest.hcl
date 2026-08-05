@@ -114,3 +114,36 @@ run "rds_db_connect_policy_absent_when_opensearch" {
     error_message = "rds_db_connect_region_1 policy should NOT exist when secondary_storage_type = opensearch"
   }
 }
+
+# Storage-conditional outputs must keep a stable (non-null) shape: Terraform omits
+# null root outputs from the remote state, which breaks app/'s local.infra lookups.
+run "storage_outputs_are_never_null" {
+  command = plan
+
+  variables {
+    secondary_storage_type = "opensearch"
+  }
+
+  assert {
+    condition     = output.rds_db_connect_policy_region_0_arn == "" && output.rds_db_connect_policy_region_1_arn == ""
+    error_message = "rds_db_connect_policy outputs should be \"\" (not null) when secondary_storage_type = opensearch"
+  }
+
+  assert {
+    condition     = output.aurora_jdbc_url == "" && output.aurora_primary_endpoint == "" && output.aurora_global_cluster_id == ""
+    error_message = "aurora outputs should be \"\" (not null) when secondary_storage_type = opensearch"
+  }
+}
+
+run "opensearch_outputs_are_never_null_in_rdbms_mode" {
+  command = plan
+
+  variables {
+    secondary_storage_type = "rdbms"
+  }
+
+  assert {
+    condition     = output.opensearch_region_0_endpoint == "" && output.opensearch_region_1_endpoint == ""
+    error_message = "opensearch endpoint outputs should be \"\" (not null) when secondary_storage_type = rdbms"
+  }
+}

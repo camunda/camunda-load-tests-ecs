@@ -54,10 +54,10 @@ module "orchestration_cluster_region_0" {
         name  = "CAMUNDA_DATA_BACKUP_REPOSITORYNAME"
         value = local.infra.backup_bucket_region_0_name
       },
-      { name = "CAMUNDA_CLUSTER_RAFT_MAXAPPENDSPERFOLLOWER",
-        value = 1 
+      { name  = "CAMUNDA_CLUSTER_RAFT_MAXAPPENDSPERFOLLOWER",
+        value = 1
       },
-      { name = "CAMUNDA_CLUSTER_RAFT_MAXAPPENDBATCHSIZE",
+      { name  = "CAMUNDA_CLUSTER_RAFT_MAXAPPENDBATCHSIZE",
         value = "1MB"
       },
       {
@@ -86,7 +86,7 @@ module "orchestration_cluster_region_0" {
   efs_security_group_ids = [local.infra.sg_efs_region_0_id]
 
   extra_task_role_attachments = concat(
-    local.infra.rds_db_connect_policy_region_0_arn != null ? [local.infra.rds_db_connect_policy_region_0_arn] : [],
+    local.rds_db_connect_policy_arns.region_0 != "" ? [local.rds_db_connect_policy_arns.region_0] : [],
     [local.infra.s3_backup_access_policy_region_0_arn],
   )
 
@@ -186,7 +186,7 @@ module "orchestration_cluster_region_1" {
   efs_security_group_ids = [local.infra.sg_efs_region_1_id]
 
   extra_task_role_attachments = concat(
-    local.infra.rds_db_connect_policy_region_1_arn != null ? [local.infra.rds_db_connect_policy_region_1_arn] : [],
+    local.rds_db_connect_policy_arns.region_1 != "" ? [local.rds_db_connect_policy_arns.region_1] : [],
     [local.infra.s3_backup_access_policy_region_1_arn],
   )
 
@@ -226,8 +226,12 @@ module "connectors_region_0" {
     local.infra.sg_package_80_443_region_0_id,
   ]
 
+  # NOTE: local.rdbms_env_vars is deliberately NOT passed here. Connectors never
+  # touch the secondary storage database, and the connectors-bundle image does
+  # not ship the AWS Advanced JDBC wrapper, so
+  # SPRING_DATASOURCE_DRIVER_CLASS_NAME=software.amazon.jdbc.Driver would point
+  # at a class that is absent from the classpath.
   environment_variables = concat(
-    local.rdbms_env_vars,
     local.opensearch_env_vars_region_0,
     [
       # Only run connectors — disable broker, gateway, operate, tasklist via Spring profile
@@ -258,7 +262,7 @@ module "connectors_region_0" {
 
   task_desired_count = 1
   extra_task_role_attachments = concat(
-    local.infra.rds_db_connect_policy_region_0_arn != null ? [local.infra.rds_db_connect_policy_region_0_arn] : [],
+    local.rds_db_connect_policy_arns.region_0 != "" ? [local.rds_db_connect_policy_arns.region_0] : [],
   )
   service_timeouts = {
     create = "30m"
@@ -297,8 +301,8 @@ module "connectors_region_1" {
     local.infra.sg_package_80_443_region_1_id,
   ]
 
+  # See region 0 connectors above: no local.rdbms_env_vars here.
   environment_variables = concat(
-    local.rdbms_env_vars,
     local.opensearch_env_vars_region_1,
     [
       # Only run connectors — disable broker, gateway, operate, tasklist via Spring profile
@@ -329,7 +333,7 @@ module "connectors_region_1" {
 
   task_desired_count = 1
   extra_task_role_attachments = concat(
-    local.infra.rds_db_connect_policy_region_1_arn != null ? [local.infra.rds_db_connect_policy_region_1_arn] : [],
+    local.rds_db_connect_policy_arns.region_1 != "" ? [local.rds_db_connect_policy_arns.region_1] : [],
   )
   service_timeouts = {
     create = "30m"

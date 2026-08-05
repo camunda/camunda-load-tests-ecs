@@ -159,12 +159,15 @@ output "ecs_task_execution_role_region_1_arn" {
   value = aws_iam_role.ecs_task_execution_region_1.arn
 }
 
+# Storage-conditional outputs use "" (not null) for the inactive branch: Terraform
+# omits null root outputs from the remote state entirely, which makes app/ fail with
+# "does not have an attribute named ...". "" always keeps the attribute present.
 output "rds_db_connect_policy_region_0_arn" {
-  value = var.secondary_storage_type == "rdbms" ? aws_iam_policy.rds_db_connect_region_0[0].arn : null
+  value = var.secondary_storage_type == "rdbms" ? aws_iam_policy.rds_db_connect_region_0[0].arn : ""
 }
 
 output "rds_db_connect_policy_region_1_arn" {
-  value = var.secondary_storage_type == "rdbms" ? aws_iam_policy.rds_db_connect_region_1[0].arn : null
+  value = var.secondary_storage_type == "rdbms" ? aws_iam_policy.rds_db_connect_region_1[0].arn : ""
 }
 
 output "s3_backup_access_policy_region_0_arn" {
@@ -214,30 +217,30 @@ output "registry_credentials_region_1_arn" {
 ################################################################
 
 output "aurora_global_cluster_id" {
-  value       = var.secondary_storage_type == "rdbms" ? module.aurora_global[0].global_cluster_id : null
+  value       = var.secondary_storage_type == "rdbms" ? module.aurora_global[0].global_cluster_id : ""
   description = "The ID of the Aurora Global Database cluster"
 }
 
 output "aurora_primary_endpoint" {
-  value       = var.secondary_storage_type == "rdbms" ? module.aurora_global[0].primary_cluster_endpoint : null
+  value       = var.secondary_storage_type == "rdbms" ? module.aurora_global[0].primary_cluster_endpoint : ""
   description = "The writer endpoint of the Aurora Global DB primary cluster"
 }
 
 output "aurora_jdbc_url" {
-  value       = var.secondary_storage_type == "rdbms" ? module.aurora_global[0].jdbc_url : null
+  value       = var.secondary_storage_type == "rdbms" ? module.aurora_global[0].jdbc_url : ""
   description = "AWS JDBC Wrapper URL using the Aurora Global writer endpoint (auto-repoints on failover), with iam+failover plugins and globalClusterInstanceHostPatterns"
 }
 
 output "aurora_primary_cluster_identifier" {
-  value = var.secondary_storage_type == "rdbms" ? module.aurora_global[0].primary_cluster_identifier : null
+  value = var.secondary_storage_type == "rdbms" ? module.aurora_global[0].primary_cluster_identifier : ""
 }
 
 output "aurora_secondary_cluster_identifier" {
-  value = var.secondary_storage_type == "rdbms" ? module.aurora_global[0].secondary_cluster_identifier : null
+  value = var.secondary_storage_type == "rdbms" ? module.aurora_global[0].secondary_cluster_identifier : ""
 }
 
 output "aurora_secondary_endpoint" {
-  value = var.secondary_storage_type == "rdbms" ? module.aurora_global[0].secondary_cluster_endpoint : null
+  value = var.secondary_storage_type == "rdbms" ? module.aurora_global[0].secondary_cluster_endpoint : ""
 }
 
 ################################################################
@@ -245,12 +248,12 @@ output "aurora_secondary_endpoint" {
 ################################################################
 
 output "opensearch_region_0_endpoint" {
-  value       = var.secondary_storage_type == "opensearch" ? module.opensearch_region_0[0].opensearch_domain_endpoint : null
+  value       = var.secondary_storage_type == "opensearch" ? module.opensearch_region_0[0].opensearch_domain_endpoint : ""
   description = "The endpoint of the OpenSearch domain in region 0"
 }
 
 output "opensearch_region_1_endpoint" {
-  value       = var.secondary_storage_type == "opensearch" ? module.opensearch_region_1[0].opensearch_domain_endpoint : null
+  value       = var.secondary_storage_type == "opensearch" ? module.opensearch_region_1[0].opensearch_domain_endpoint : ""
   description = "The endpoint of the OpenSearch domain in region 1"
 }
 
