@@ -1,23 +1,19 @@
-# Validation tests for terraform/vpc/.
+# Validation tests for aws/dual-region/vpc.
 #
-# Covers per-variable regex validation and the two cross-variable check blocks
-# in byo.tf. Every test in this file uses expect_failures to assert a SPECIFIC
-# validation rule fires — never a blanket failure, otherwise a regression that
-# breaks the wrong thing would still pass.
+# Covers the per-variable validation rules that still exist plus the single
+# cross-cutting check block in byo.tf (check.byo_vpc_stable_state_shape).
+# Every test uses expect_failures to assert a SPECIFIC rule fires — never a
+# blanket failure, otherwise a regression that breaks the wrong thing would
+# still pass.
 #
-# These tests use mock_provider so no AWS calls are made.
-#
-# Design note: to test validation rules without poisoning the plan with
-# unrelated resource errors (e.g. empty CIDRs hitting TGW route validation),
-# regex tests supply a complete valid BYO fixture and invalidate exactly one
-# field. Check-block tests use the smallest input shape that fires the check.
+# These tests use mock_provider and override_data so no AWS calls are made.
 
 mock_provider "aws" {}
 mock_provider "aws" {
   alias = "accepter"
 }
 
-# Override AZ data sources so greenfield-mode tests have deterministic AZs.
+# Override AZ data sources so greenfield-mode runs have deterministic AZs.
 override_data {
   target = data.aws_availability_zones.region_0[0]
   values = {
@@ -32,135 +28,75 @@ override_data {
   }
 }
 
-# A complete, valid BYO fixture. Individual regex tests override one field
-# at a time to invalidate it.
+# Deliberately undersized stable state: only 2 private subnets per region,
+# which violates the ≥3 contract asserted by check.byo_vpc_stable_state_shape.
+override_data {
+  target = data.terraform_remote_state.stable_region_0[0]
+  values = {
+    outputs = {
+      vpc_id                      = "vpc-aaaaaaaa"
+      vpc_cidr_block              = "10.50.0.0/16"
+      vpc_private_subnets         = ["subnet-aaa1aaaa", "subnet-aaa2aaaa"]
+      vpc_public_subnets          = ["subnet-aaa4aaaa", "subnet-aaa5aaaa", "subnet-aaa6aaaa"]
+      vpc_private_route_table_ids = ["rtb-aaa1aaaa"]
+    }
+  }
+}
+
+override_data {
+  target = data.terraform_remote_state.stable_region_1[0]
+  values = {
+    outputs = {
+      vpc_id                      = "vpc-bbbbbbbb"
+      vpc_cidr_block              = "10.60.0.0/16"
+      vpc_private_subnets         = ["subnet-bbb1bbbb", "subnet-bbb2bbbb"]
+      vpc_public_subnets          = ["subnet-bbb4bbbb", "subnet-bbb5bbbb", "subnet-bbb6bbbb"]
+      vpc_private_route_table_ids = ["rtb-bbb1bbbb"]
+    }
+  }
+}
+
 variables {
   cluster_name = "test-validation"
-
-  byo_vpc                          = true
-  region_0_vpc_id                  = "vpc-aaaaaaaa"
-  region_0_vpc_cidr                = "10.50.0.0/16"
-  region_0_private_subnet_ids      = ["subnet-aaa1aaaa", "subnet-aaa2aaaa", "subnet-aaa3aaaa"]
-  region_0_public_subnet_ids       = ["subnet-aaa4aaaa", "subnet-aaa5aaaa", "subnet-aaa6aaaa"]
-  region_0_private_route_table_ids = ["rtb-aaa1aaaa"]
-
-  region_1_vpc_id                  = "vpc-bbbbbbbb"
-  region_1_vpc_cidr                = "10.60.0.0/16"
-  region_1_private_subnet_ids      = ["subnet-bbb1bbbb", "subnet-bbb2bbbb", "subnet-bbb3bbbb"]
-  region_1_public_subnet_ids       = ["subnet-bbb4bbbb", "subnet-bbb5bbbb", "subnet-bbb6bbbb"]
-  region_1_private_route_table_ids = ["rtb-bbb1bbbb"]
 }
 
-# ---------------------------- Cross-variable: check.byo_vpc_required_inputs ----------------------------
+# ------------------- Cross-variable: check.byo_vpc_stable_state_shape -------------------
 
-run "byo_vpc_required_inputs_fail_when_subnets_below_minimum" {
+run "byo_vpc_stable_state_shape_fails_when_subnets_below_minimum" {
   command = plan
 
   variables {
-    # Override two subnet lists to length 2 — below the required 3.
-    region_0_private_subnet_ids = ["subnet-aaa1aaaa", "subnet-aaa2aaaa"]
-    region_1_private_subnet_ids = ["subnet-bbb1bbbb", "subnet-bbb2bbbb"]
+    byo_vpc = true
   }
 
   expect_failures = [
-    check.byo_vpc_required_inputs,
+    check.byo_vpc_stable_state_shape,
   ]
 }
 
-# ---------------------------- Cross-variable: check.create_vpc_inputs_clean ----------------------------
+# ------------------- Per-variable validation -------------------
 
-run "create_vpc_inputs_clean_fail_when_stray_vpc_id" {
+run "region_0_cidr_validation_rejects_garbage" {
   command = plan
 
   variables {
-    # Clear all BYO vars, then switch to greenfield, then set one stray VPC ID.
-    byo_vpc                          = false
-    region_0_vpc_id                  = "vpc-aaaaaaaa"
-    region_0_vpc_cidr                = ""
-    region_0_private_subnet_ids      = []
-    region_0_public_subnet_ids       = []
-    region_0_private_route_table_ids = []
-    region_1_vpc_id                  = ""
-    region_1_vpc_cidr                = ""
-    region_1_private_subnet_ids      = []
-    region_1_public_subnet_ids       = []
-    region_1_private_route_table_ids = []
+    region_0_cidr = "not-a-cidr"
   }
 
   expect_failures = [
-    check.create_vpc_inputs_clean,
+    var.region_0_cidr,
   ]
 }
 
-run "create_vpc_inputs_clean_fail_when_stray_subnet_ids" {
+run "region_1_cidr_validation_rejects_garbage" {
   command = plan
 
   variables {
-    byo_vpc                          = false
-    region_0_vpc_id                  = ""
-    region_0_vpc_cidr                = ""
-    region_0_private_subnet_ids      = []
-    region_0_public_subnet_ids       = []
-    region_0_private_route_table_ids = []
-    region_1_vpc_id                  = ""
-    region_1_vpc_cidr                = ""
-    region_1_private_subnet_ids      = ["subnet-bbb1bbbb", "subnet-bbb2bbbb", "subnet-bbb3bbbb"]
-    region_1_public_subnet_ids       = []
-    region_1_private_route_table_ids = []
+    region_1_cidr = "not-a-cidr"
   }
 
   expect_failures = [
-    check.create_vpc_inputs_clean,
-  ]
-}
-
-# ---------------------------- Per-variable regex validation ----------------------------
-
-run "vpc_id_regex_rejects_malformed" {
-  command = plan
-
-  variables {
-    region_0_vpc_id = "not-a-vpc-id"
-  }
-
-  expect_failures = [
-    var.region_0_vpc_id,
-  ]
-}
-
-run "subnet_id_regex_rejects_malformed" {
-  command = plan
-
-  variables {
-    region_0_private_subnet_ids = ["subnet-aaa1aaaa", "bogus-subnet", "subnet-aaa3aaaa"]
-  }
-
-  expect_failures = [
-    var.region_0_private_subnet_ids,
-  ]
-}
-
-run "route_table_id_regex_rejects_malformed" {
-  command = plan
-
-  variables {
-    region_0_private_route_table_ids = ["wrong-format"]
-  }
-
-  expect_failures = [
-    var.region_0_private_route_table_ids,
-  ]
-}
-
-run "cidr_validation_rejects_garbage" {
-  command = plan
-
-  variables {
-    region_0_vpc_cidr = "not-a-cidr"
-  }
-
-  expect_failures = [
-    var.region_0_vpc_cidr,
+    var.region_1_cidr,
   ]
 }
 
