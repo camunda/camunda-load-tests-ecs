@@ -51,6 +51,27 @@ else ifeq ($(shell which terraform 2>/dev/null),)
   TERRAFORM = tofu
 endif
 
+# Single source of truth for the variables passed to plan/apply/destroy.
+# All three targets must resolve the same remote state and cluster, otherwise
+# destroy would target a different stack and leak resources.
+TF_VARS = \
+	-var-file=$(TFVARS_FILE) \
+	-var="aws_region=$(AWS_REGION)" \
+	-var="force_new_deployment=$(FORCE_NEW_DEPLOYMENT)" \
+	-var="prefix=$(PREFIX)" \
+	-var="camunda_host=$(CAMUNDA_HOST)" \
+	-var="grpc_address=$(GRPC_ADDRESS)" \
+	-var="rest_address=$(REST_ADDRESS)" \
+	-var="prefer_rest_over_grpc=$(PREFER_REST_OVER_GRPC)" \
+	-var="starter_image=$(STARTER_IMAGE)" \
+	-var="worker_image=$(WORKER_IMAGE)" \
+	-var="camunda_auth_username=$(CAMUNDA_AUTH_USERNAME)" \
+	-var="camunda_auth_password_secret_arn=$(CAMUNDA_AUTH_PASSWORD_SECRET_ARN)" \
+	-var="camunda_auth_password_kms_key_arn=$(CAMUNDA_AUTH_PASSWORD_KMS_KEY_ARN)" \
+	-var="dual_region=$(DUAL_REGION)" \
+	-var="dual_region_index=$(DUAL_REGION_INDEX)" \
+	-var="dual_region_infra_state_key=$(DUAL_REGION_INFRA_STATE_KEY)"
+
 .PHONY: help init plan apply deploy destroy clean show-vars restart
 
 help: ## Show this help message
@@ -80,53 +101,15 @@ init: ## Initialize Terraform with backend configuration
 	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) init -backend-config="key=$(BACKEND_KEY)" -reconfigure
 
 plan: init ## Plan the infrastructure changes
-	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) plan \
-		-var-file=$(TFVARS_FILE) \
-		-var="aws_region=$(AWS_REGION)" \
-		-var="force_new_deployment=$(FORCE_NEW_DEPLOYMENT)" \
-		-var="prefix=$(PREFIX)" \
-		-var="camunda_host=$(CAMUNDA_HOST)" \
-		-var="grpc_address=$(GRPC_ADDRESS)" \
-		-var="rest_address=$(REST_ADDRESS)" \
-		-var="prefer_rest_over_grpc=$(PREFER_REST_OVER_GRPC)" \
-		-var="starter_image=$(STARTER_IMAGE)" \
-		-var="worker_image=$(WORKER_IMAGE)" \
-		-var="camunda_auth_username=$(CAMUNDA_AUTH_USERNAME)" \
-		-var="camunda_auth_password_secret_arn=$(CAMUNDA_AUTH_PASSWORD_SECRET_ARN)" \
-		-var="camunda_auth_password_kms_key_arn=$(CAMUNDA_AUTH_PASSWORD_KMS_KEY_ARN)" \
-		-var="dual_region=$(DUAL_REGION)" \
-		-var="dual_region_index=$(DUAL_REGION_INDEX)" \
-		-var="dual_region_infra_state_key=$(DUAL_REGION_INFRA_STATE_KEY)"
+	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) plan $(TF_VARS)
 
 apply: init ## Apply the infrastructure changes
-	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) apply $(AUTO_APPROVE) \
-		-var-file=$(TFVARS_FILE) \
-		-var="aws_region=$(AWS_REGION)" \
-		-var="force_new_deployment=$(FORCE_NEW_DEPLOYMENT)" \
-		-var="prefix=$(PREFIX)" \
-		-var="camunda_host=$(CAMUNDA_HOST)" \
-		-var="grpc_address=$(GRPC_ADDRESS)" \
-		-var="rest_address=$(REST_ADDRESS)" \
-		-var="prefer_rest_over_grpc=$(PREFER_REST_OVER_GRPC)" \
-		-var="starter_image=$(STARTER_IMAGE)" \
-		-var="worker_image=$(WORKER_IMAGE)" \
-		-var="camunda_auth_username=$(CAMUNDA_AUTH_USERNAME)" \
-		-var="camunda_auth_password_secret_arn=$(CAMUNDA_AUTH_PASSWORD_SECRET_ARN)" \
-		-var="camunda_auth_password_kms_key_arn=$(CAMUNDA_AUTH_PASSWORD_KMS_KEY_ARN)" \
-		-var="dual_region=$(DUAL_REGION)" \
-		-var="dual_region_index=$(DUAL_REGION_INDEX)" \
-		-var="dual_region_infra_state_key=$(DUAL_REGION_INFRA_STATE_KEY)"
+	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) apply $(AUTO_APPROVE) $(TF_VARS)
 
 deploy: apply ## Alias for apply
 
 destroy: init ## Destroy all load test infrastructure
-	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) destroy $(AUTO_APPROVE) \
-		-var-file=$(TFVARS_FILE) \
-		-var="aws_region=$(AWS_REGION)" \
-		-var="prefix=$(PREFIX)" \
-		-var="camunda_host=$(CAMUNDA_HOST)" \
-		-var="dual_region=$(DUAL_REGION)" \
-		-var="dual_region_index=$(DUAL_REGION_INDEX)"
+	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) destroy $(AUTO_APPROVE) $(TF_VARS)
 
 clean: ## Clean terraform files
 	rm -rf $(TERRAFORM_DIR)/.terraform $(TERRAFORM_DIR)/.terraform.lock.hcl
