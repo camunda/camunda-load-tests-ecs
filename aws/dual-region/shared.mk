@@ -32,15 +32,22 @@ help: ## Show this help message
 	@echo "$(STATE_DESC) — $(ENV)"
 	@echo "Usage: make <target>"
 	@echo "  init | plan | apply | deploy | destroy | clean | show-vars"
+	@echo "  FORCE_DEPLOYMENT=1 make apply  -- force a new ECS deployment (app state only)"
 
 init: ## Initialize Terraform with backend configuration
 	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) init -backend-config="key=$(BACKEND_KEY)" -reconfigure
 
 plan: init ## Plan the infrastructure changes
-	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) plan -var-file=$(TFVARS_FILE) $(EXTRA_TF_VARS)
+	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) plan -var-file=$(TFVARS_FILE) $(EXTRA_TF_VARS) $(if $(FORCE_DEPLOYMENT),-var="force_deployment=true")
 
 apply: init ## Apply the infrastructure changes
+	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) apply $(AUTO_APPROVE) -var-file=$(TFVARS_FILE) $(EXTRA_TF_VARS) $(if $(FORCE_DEPLOYMENT),-var="force_deployment=true")
+ifdef FORCE_DEPLOYMENT
+	# force_new_deployment is a sticky boolean in state: it only triggers an ECS
+	# deployment on a false->true diff, so flip it back to false immediately or
+	# the next FORCE_DEPLOYMENT=1 apply would see true->true (no diff, no-op).
 	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) apply $(AUTO_APPROVE) -var-file=$(TFVARS_FILE) $(EXTRA_TF_VARS)
+endif
 
 deploy: apply ## Alias for apply
 

@@ -36,6 +36,12 @@ variable "camunda_image" {
   description = "Container image for the Camunda orchestration cluster tasks (Zeebe broker + gateway + webapps)"
 }
 
+variable "force_deployment" {
+  type        = bool
+  default     = false
+  description = "Force a new ECS deployment of the orchestration-cluster services on apply, even without a task definition change"
+}
+
 variable "connectors_image" {
   type = string
   # Pinned to SNAPSHOT for the same reason as camunda_image above (dual-region
