@@ -36,10 +36,10 @@ locals {
     fi
 
     for user in $${IAM_DB_USERS}; do
-      mysql --host="$${AURORA_ENDPOINT}" --port="$${AURORA_PORT}" \\
-        --user="$${AURORA_ADMIN_USERNAME}" --password="$${AURORA_ADMIN_PASSWORD}" \\
-        --ssl-mode=REQUIRED \\
-        -e "CREATE USER IF NOT EXISTS '$${user}'@'%' IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS' REQUIRE SSL; GRANT ALL PRIVILEGES ON \\`$${AURORA_DB_NAME}\\`.* TO '$${user}'@'%'; FLUSH PRIVILEGES;"
+      mysql --host="$${AURORA_ENDPOINT}" --port="$${AURORA_PORT}" \
+        --user="$${AURORA_ADMIN_USERNAME}" --password="$${AURORA_ADMIN_PASSWORD}" \
+        --ssl-mode=REQUIRED \
+        -e "CREATE USER IF NOT EXISTS '$${user}'@'%' IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS' REQUIRE SSL; GRANT ALL PRIVILEGES ON \`$${AURORA_DB_NAME}\`.* TO '$${user}'@'%'; FLUSH PRIVILEGES;"
     done
   EOT
     ) : (<<-EOT
@@ -51,12 +51,12 @@ locals {
     fi
 
     for user in $${IAM_DB_USERS}; do
-      psql "host=$${AURORA_ENDPOINT} port=$${AURORA_PORT} dbname=$${AURORA_DB_NAME} user=$${AURORA_ADMIN_USERNAME} password=$${AURORA_ADMIN_PASSWORD} sslmode=require" \\
-        -v ON_ERROR_STOP=1 \\
-        -c "DO \\$\\$ BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$${user}') THEN CREATE ROLE \\\"$${user}\\\" WITH LOGIN; END IF; END \\$\\$;" \\
-        -c "GRANT rds_iam TO \\\"$${user}\\\";" \\
-        -c "GRANT ALL PRIVILEGES ON DATABASE \\\"$${AURORA_DB_NAME}\\\" TO \\\"$${user}\\\";" \\
-        -c "GRANT USAGE, CREATE ON SCHEMA public TO \\\"$${user}\\\";"
+      psql "host=$${AURORA_ENDPOINT} port=$${AURORA_PORT} dbname=$${AURORA_DB_NAME} user=$${AURORA_ADMIN_USERNAME} password=$${AURORA_ADMIN_PASSWORD} sslmode=require" \
+        -v ON_ERROR_STOP=1 \
+        -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$${user}') THEN CREATE ROLE \"$${user}\" WITH LOGIN; END IF; END \$\$;" \
+        -c "GRANT rds_iam TO \"$${user}\";" \
+        -c "GRANT ALL PRIVILEGES ON DATABASE \"$${AURORA_DB_NAME}\" TO \"$${user}\";" \
+        -c "GRANT USAGE, CREATE ON SCHEMA public TO \"$${user}\";"
     done
   EOT
   )
