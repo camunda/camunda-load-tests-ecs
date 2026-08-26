@@ -4,7 +4,7 @@
 
 module "aurora_global" {
   count  = var.secondary_storage_type == "rdbms" ? 1 : 0
-  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/aurora-global?ref=f645534a16e203a39bfab1cae30975d901b61303"
+  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/aurora-global?ref=7907c7e60bfb2013b8e6933889ca53714c3b6bc9"
 
   providers = {
     aws.primary   = aws

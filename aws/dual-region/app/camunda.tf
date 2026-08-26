@@ -3,16 +3,17 @@
 ################################################################
 
 module "orchestration_cluster_region_0" {
-  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/orchestration-cluster?ref=f645534a16e203a39bfab1cae30975d901b61303"
+  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/orchestration-cluster?ref=7907c7e60bfb2013b8e6933889ca53714c3b6bc9"
 
-  prefix                   = "${local.infra.cluster_name}-r0-oc"
-  ecs_cluster_id           = local.infra.ecs_cluster_region_0_id
-  vpc_id                   = local.infra.vpc_region_0_id
-  vpc_private_subnets      = local.infra.vpc_region_0_private_subnets
-  aws_region               = data.aws_region.region_0.id
-  image                    = var.camunda_image
-  registry_credentials_arn = startswith(var.camunda_image, "registry.camunda.cloud/") ? local.infra.registry_credentials_region_0_arn : ""
-  s3_force_destroy         = local.infra.s3_force_destroy
+  prefix                       = "${local.infra.cluster_name}-r0-oc"
+  ecs_cluster_id               = local.infra.ecs_cluster_region_0_id
+  vpc_id                       = local.infra.vpc_region_0_id
+  vpc_private_subnets          = local.infra.vpc_region_0_private_subnets
+  aws_region                   = data.aws_region.region_0.id
+  image                        = var.camunda_image
+  registry_credentials_arn     = startswith(var.camunda_image, "registry.camunda.cloud/") ? local.infra.registry_credentials_region_0_arn : ""
+  s3_force_destroy             = local.infra.s3_force_destroy
+  service_force_new_deployment = var.force_deployment
 
   # IAM Roles
   ecs_task_execution_role_arn = local.infra.ecs_task_execution_role_region_0_arn
@@ -109,20 +110,21 @@ module "orchestration_cluster_region_0" {
 ################################################################
 
 module "orchestration_cluster_region_1" {
-  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/orchestration-cluster?ref=f645534a16e203a39bfab1cae30975d901b61303"
+  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/orchestration-cluster?ref=7907c7e60bfb2013b8e6933889ca53714c3b6bc9"
 
   providers = {
     aws = aws.accepter
   }
 
-  prefix                   = "${local.infra.cluster_name}-r1-oc"
-  ecs_cluster_id           = local.infra.ecs_cluster_region_1_id
-  vpc_id                   = local.infra.vpc_region_1_id
-  vpc_private_subnets      = local.infra.vpc_region_1_private_subnets
-  aws_region               = data.aws_region.region_1.id
-  image                    = var.camunda_image
-  registry_credentials_arn = startswith(var.camunda_image, "registry.camunda.cloud/") ? local.infra.registry_credentials_region_1_arn : ""
-  s3_force_destroy         = local.infra.s3_force_destroy
+  prefix                       = "${local.infra.cluster_name}-r1-oc"
+  ecs_cluster_id               = local.infra.ecs_cluster_region_1_id
+  vpc_id                       = local.infra.vpc_region_1_id
+  vpc_private_subnets          = local.infra.vpc_region_1_private_subnets
+  aws_region                   = data.aws_region.region_1.id
+  image                        = var.camunda_image
+  registry_credentials_arn     = startswith(var.camunda_image, "registry.camunda.cloud/") ? local.infra.registry_credentials_region_1_arn : ""
+  s3_force_destroy             = local.infra.s3_force_destroy
+  service_force_new_deployment = var.force_deployment
 
   # IAM Roles
   ecs_task_execution_role_arn = local.infra.ecs_task_execution_role_region_1_arn
@@ -205,7 +207,7 @@ module "orchestration_cluster_region_1" {
 ################################################################
 
 module "connectors_region_0" {
-  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/connectors?ref=f645534a16e203a39bfab1cae30975d901b61303"
+  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/connectors?ref=7907c7e60bfb2013b8e6933889ca53714c3b6bc9"
 
   prefix                               = "${local.infra.cluster_name}-r0-oc"
   ecs_cluster_id                       = local.infra.ecs_cluster_region_0_id
@@ -276,7 +278,7 @@ module "connectors_region_0" {
 ################################################################
 
 module "connectors_region_1" {
-  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/connectors?ref=f645534a16e203a39bfab1cae30975d901b61303"
+  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/connectors?ref=7907c7e60bfb2013b8e6933889ca53714c3b6bc9"
 
   providers = {
     aws = aws.accepter
