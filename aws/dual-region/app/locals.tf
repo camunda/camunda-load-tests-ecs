@@ -126,6 +126,18 @@ locals {
       name  = "SPRING_DATASOURCE_DRIVER_CLASS_NAME"
       value = "software.amazon.jdbc.Driver"
     },
+    {
+      name  = "CAMUNDA_DATA_SECONDARYSTORAGE_RDBMS_ASYNCREPLICATION_ENABLED"
+      value = "true"
+    },
+    {
+      name  = "CAMUNDA_DATA_SECONDARYSTORAGE_RDBMS_ASYNCREPLICATION_PAUSEONMAXLAGEXCEEDED"
+      value = "true"
+    },
+    {
+      name  = "CAMUNDA_DATA_SECONDARYSTORAGE_RDBMS_CONNECTIONPOOL_KEEPALIVETIME"
+      value = "30s"
+    },
   ] : []
 
   opensearch_env_vars_region_0 = local.infra.secondary_storage_type == "opensearch" ? [
