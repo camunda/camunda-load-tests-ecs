@@ -226,6 +226,11 @@ output "aurora_primary_endpoint" {
   description = "The writer endpoint of the Aurora Global DB primary cluster"
 }
 
+output "aurora_jdbc_url" {
+  value       = var.secondary_storage_type == "rdbms" ? module.aurora_global[0].jdbc_url : ""
+  description = "AWS JDBC Wrapper URL using the Aurora Global writer endpoint (auto-repoints on failover), with iam+failover plugins and globalClusterInstanceHostPatterns"
+}
+
 output "aurora_primary_cluster_identifier" {
   value = var.secondary_storage_type == "rdbms" ? module.aurora_global[0].primary_cluster_identifier : ""
 }

@@ -4,7 +4,7 @@
 
 module "opensearch_region_0" {
   count  = var.secondary_storage_type == "opensearch" ? 1 : 0
-  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/opensearch?ref=7907c7e60bfb2013b8e6933889ca53714c3b6bc9"
+  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/opensearch?ref=ab171a87ec14658534bf7e518b64e06109033b0f"
 
   domain_name = "${local.prefix_region_0}-opensearch"
   vpc_id      = local.vpc.region_0_vpc_id
@@ -29,7 +29,7 @@ module "opensearch_region_0" {
 
 module "opensearch_region_1" {
   count  = var.secondary_storage_type == "opensearch" ? 1 : 0
-  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/opensearch?ref=7907c7e60bfb2013b8e6933889ca53714c3b6bc9"
+  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/opensearch?ref=ab171a87ec14658534bf7e518b64e06109033b0f"
 
   providers = {
     aws = aws.accepter

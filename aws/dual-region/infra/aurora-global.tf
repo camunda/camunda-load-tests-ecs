@@ -2,9 +2,18 @@
 #                 Aurora Global Database                        #
 ################################################################
 
+# Every camunda-deployment-references module in this repo is pinned to
+# ab171a87 — the head of PR #2914 (branch aurora-mysql-engine-option) — rather
+# than to main. On main this module hardcodes port 5432 in its security groups,
+# so an aurora-mysql cluster never gets a 3306 rule, and the SGs use inline
+# ingress/egress blocks, which Terraform forbids combining with standalone
+# aws_security_group_rule resources — the port cannot be patched from here.
+# The branch is behind main, but across every module path this repo sources
+# main has changed nothing since the branch point, so nothing is lost.
+# Move all the pins back to main once #2914 merges.
 module "aurora_global" {
   count  = var.secondary_storage_type == "rdbms" ? 1 : 0
-  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/aurora-global?ref=7907c7e60bfb2013b8e6933889ca53714c3b6bc9"
+  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/aurora-global?ref=ab171a87ec14658534bf7e518b64e06109033b0f"
 
   providers = {
     aws.primary   = aws

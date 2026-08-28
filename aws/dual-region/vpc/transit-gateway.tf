@@ -4,7 +4,7 @@
 
 module "transit_gateway" {
   count  = var.networking_mode == "transit_gateway" ? 1 : 0
-  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/transit-gateway?ref=7907c7e60bfb2013b8e6933889ca53714c3b6bc9"
+  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/transit-gateway?ref=ab171a87ec14658534bf7e518b64e06109033b0f"
 
   providers = {
     aws.owner    = aws

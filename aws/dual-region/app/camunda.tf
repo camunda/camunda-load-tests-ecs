@@ -3,7 +3,7 @@
 ################################################################
 
 module "orchestration_cluster_region_0" {
-  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/orchestration-cluster?ref=7907c7e60bfb2013b8e6933889ca53714c3b6bc9"
+  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/orchestration-cluster?ref=ab171a87ec14658534bf7e518b64e06109033b0f"
 
   prefix                       = "${local.infra.cluster_name}-r0-oc"
   ecs_cluster_id               = local.infra.ecs_cluster_region_0_id
@@ -76,6 +76,10 @@ module "orchestration_cluster_region_0" {
     {
       name      = "CAMUNDA_SECURITY_INITIALIZATION_USERS_1_PASSWORD"
       valueFrom = local.infra.connectors_password_secret_region_0_arn
+    },
+    {
+      name      = "CAMUNDA_SECURITY_CLUSTERADMIN_BASIC_USERS_0_PASSWORD"
+      valueFrom = local.infra.admin_user_password_secret_region_0_arn
     }
   ]
 
@@ -110,7 +114,7 @@ module "orchestration_cluster_region_0" {
 ################################################################
 
 module "orchestration_cluster_region_1" {
-  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/orchestration-cluster?ref=7907c7e60bfb2013b8e6933889ca53714c3b6bc9"
+  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/orchestration-cluster?ref=ab171a87ec14658534bf7e518b64e06109033b0f"
 
   providers = {
     aws = aws.accepter
@@ -177,6 +181,10 @@ module "orchestration_cluster_region_1" {
     {
       name      = "CAMUNDA_SECURITY_INITIALIZATION_USERS_1_PASSWORD"
       valueFrom = local.infra.connectors_password_secret_region_1_arn
+    },
+    {
+      name      = "CAMUNDA_SECURITY_CLUSTERADMIN_BASIC_USERS_0_PASSWORD"
+      valueFrom = local.infra.admin_user_password_secret_region_1_arn
     }
   ]
 
@@ -207,7 +215,7 @@ module "orchestration_cluster_region_1" {
 ################################################################
 
 module "connectors_region_0" {
-  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/connectors?ref=7907c7e60bfb2013b8e6933889ca53714c3b6bc9"
+  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/connectors?ref=ab171a87ec14658534bf7e518b64e06109033b0f"
 
   prefix                               = "${local.infra.cluster_name}-r0-oc"
   ecs_cluster_id                       = local.infra.ecs_cluster_region_0_id
@@ -278,7 +286,7 @@ module "connectors_region_0" {
 ################################################################
 
 module "connectors_region_1" {
-  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/connectors?ref=7907c7e60bfb2013b8e6933889ca53714c3b6bc9"
+  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/connectors?ref=ab171a87ec14658534bf7e518b64e06109033b0f"
 
   providers = {
     aws = aws.accepter

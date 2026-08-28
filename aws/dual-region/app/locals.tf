@@ -226,6 +226,14 @@ locals {
       value = "connectors"
     },
     {
+      # Static local basic-auth credential for cluster-admin endpoints
+      # (e.g. /cluster/v2/*), independent of secondary-storage user lookup
+      # so it works regardless of exporter replication lag in a region.
+      # Reuses the same admin username/password.
+      name  = "CAMUNDA_SECURITY_CLUSTERADMIN_BASIC_USERS_0_NAME"
+      value = "admin"
+    },
+    {
       name  = "CAMUNDA_DATA_BACKUP_STORE"
       value = "S3"
     }
