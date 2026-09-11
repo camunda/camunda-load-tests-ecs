@@ -4,6 +4,17 @@ data "aws_caller_identity" "current" {}
 
 locals {
   prometheus_port = data.terraform_remote_state.stable.outputs.ports.prometheus
+
+  # Dual-region: primary federates the secondary's Prometheus /federate
+  # endpoint via its internal NLB DNS name. Empty unless
+  # federation_peer_monitoring_state_key is set (see config.tf) *and* the peer
+  # state already exists with that output — the peer stack is applied manually,
+  # so try() lets us plan/apply with federation simply absent until it does.
+  federate_peer_dns = try(data.terraform_remote_state.federation_peer_monitoring[0].outputs.prometheus_nlb_dns, "")
+
+  federate_targets = local.federate_peer_dns != "" ? [
+    "${local.federate_peer_dns}:${local.prometheus_port}"
+  ] : []
 }
 # Prometheus task definition
 resource "aws_ecs_task_definition" "prometheus" {
@@ -17,9 +28,9 @@ resource "aws_ecs_task_definition" "prometheus" {
 
   container_definitions = jsonencode([
     {
-      name      = "discovery"
-      image     = "amazon/aws-cli:latest"
-      essential = true
+      name       = "discovery"
+      image      = "amazon/aws-cli:latest"
+      essential  = true
       entryPoint = ["/bin/sh", "-c"]
       command = [
         "cat <<'SCRIPT' > /tmp/discover.sh\n${file("${path.module}/templates/discover-targets.sh")}\nSCRIPT\nchmod +x /tmp/discover.sh && exec /tmp/discover.sh"
@@ -28,7 +39,7 @@ resource "aws_ecs_task_definition" "prometheus" {
         { name = "TARGETS_FILE", value = "/etc/prometheus/targets/benchmarks.json" },
         { name = "REFRESH_INTERVAL", value = "30" },
         { name = "PORT", value = "9600" },
-        { name = "AWS_DEFAULT_REGION", value = data.aws_region.current.name },
+        { name = "AWS_DEFAULT_REGION", value = data.aws_region.current.region },
         { name = "ENVIRONMENT", value = var.environment }
       ]
       mountPoints = [
@@ -42,14 +53,14 @@ resource "aws_ecs_task_definition" "prometheus" {
         logDriver = "awslogs"
         options = {
           awslogs-group         = aws_cloudwatch_log_group.monitoring_log_group.name
-          awslogs-region        = data.aws_region.current.name
+          awslogs-region        = data.aws_region.current.region
           awslogs-stream-prefix = "discovery"
         }
       }
     },
     {
-      name      = "prometheus"
-      image     = "prom/prometheus:v3.11.2"
+      name  = "prometheus"
+      image = "prom/prometheus:v3.11.2"
       # Uncomment below if using an image from internal registry
       #repositorycredentials: {
       #  credentialsparameter: data.terraform_remote_state.stable.outputs.registry_credentials_arn
@@ -63,7 +74,7 @@ resource "aws_ecs_task_definition" "prometheus" {
       ]
       entryPoint = ["/bin/sh", "-c"]
       command = [
-        "cat <<'EOF' >/etc/prometheus/prometheus.yml\n${templatefile("${path.module}/templates/prometheus-config.yml.tpl", { prefix = var.prefix }) }\nEOF\nexec /bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.retention.time=168h --web.enable-lifecycle --web.listen-address=:${data.terraform_remote_state.stable.outputs.ports.prometheus}"
+        "cat <<'EOF' >/etc/prometheus/prometheus.yml\n${templatefile("${path.module}/templates/prometheus-config.yml.tpl", { prefix = var.prefix, federate_targets = local.federate_targets })}\nEOF\nexec /bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.retention.time=168h --web.enable-lifecycle --web.listen-address=:${data.terraform_remote_state.stable.outputs.ports.prometheus}"
       ]
       mountPoints = [
         {
@@ -76,7 +87,7 @@ resource "aws_ecs_task_definition" "prometheus" {
         logDriver = "awslogs"
         options = {
           awslogs-group         = aws_cloudwatch_log_group.monitoring_log_group.name
-          awslogs-region        = data.aws_region.current.name
+          awslogs-region        = data.aws_region.current.region
           awslogs-stream-prefix = "prometheus"
         }
       }
@@ -90,28 +101,38 @@ resource "aws_ecs_task_definition" "prometheus" {
 # Prometheus service (internal only)
 resource "aws_ecs_service" "prometheus" {
   # depends_on = [aws_lb_target_group.prometheus_9090]
-  name            = "${var.prefix}-prometheus"
-  cluster         = data.terraform_remote_state.stable.outputs.ecs_cluster_id
-  task_definition = aws_ecs_task_definition.prometheus.arn
-  desired_count   = 1
-  force_new_deployment = true
-  launch_type     = "FARGATE"
+  name                   = "${var.prefix}-prometheus"
+  cluster                = data.terraform_remote_state.stable.outputs.ecs_cluster_id
+  task_definition        = aws_ecs_task_definition.prometheus.arn
+  desired_count          = 1
+  force_new_deployment   = true
+  launch_type            = "FARGATE"
   enable_execute_command = true
 
   network_configuration {
-    subnets         = data.terraform_remote_state.stable.outputs.vpc_private_subnets
+    subnets = data.terraform_remote_state.stable.outputs.vpc_private_subnets
     security_groups = concat(
       [
         data.terraform_remote_state.stable.outputs.security_groups_id["allow_camunda_ports"],
         data.terraform_remote_state.stable.outputs.security_groups_id["allow_remote_packages"],
       ],
       aws_security_group.allow_gcp_prometheus_federation[*].id,
+      aws_security_group.allow_dual_region_federation[*].id,
     )
     assign_public_ip = false
   }
 
   service_registries {
     registry_arn = aws_service_discovery_service.prometheus.arn
+  }
+
+  dynamic "load_balancer" {
+    for_each = var.expose_via_internal_nlb ? [1] : []
+    content {
+      target_group_arn = aws_lb_target_group.prometheus[0].arn
+      container_name   = "prometheus"
+      container_port   = local.prometheus_port
+    }
   }
 }
 

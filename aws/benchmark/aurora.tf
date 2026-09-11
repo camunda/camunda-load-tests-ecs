@@ -20,7 +20,7 @@ resource "aws_secretsmanager_secret_version" "db_admin_password" {
 }
 
 module "postgresql" {
-  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/aurora?ref=d15e9e10b97b52052e735ab21dc449dbfe681170"
+  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/aurora?ref=f645534a16e203a39bfab1cae30975d901b61303"
 
   cluster_name          = "${var.prefix}-aurora"
   availability_zones    = data.aws_availability_zones.available.names
