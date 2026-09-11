@@ -3,7 +3,7 @@
 ################################################################
 
 module "orchestration_cluster_region_0" {
-  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/orchestration-cluster?ref=ab171a87ec14658534bf7e518b64e06109033b0f"
+  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/orchestration-cluster?ref=3a69998472d04212a12692a33cb761628d7392d6"
 
   prefix                       = "${local.infra.cluster_name}-r0-oc"
   ecs_cluster_id               = local.infra.ecs_cluster_region_0_id
@@ -114,7 +114,7 @@ module "orchestration_cluster_region_0" {
 ################################################################
 
 module "orchestration_cluster_region_1" {
-  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/orchestration-cluster?ref=ab171a87ec14658534bf7e518b64e06109033b0f"
+  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/orchestration-cluster?ref=3a69998472d04212a12692a33cb761628d7392d6"
 
   providers = {
     aws = aws.accepter
@@ -215,7 +215,7 @@ module "orchestration_cluster_region_1" {
 ################################################################
 
 module "connectors_region_0" {
-  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/connectors?ref=ab171a87ec14658534bf7e518b64e06109033b0f"
+  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/connectors?ref=3a69998472d04212a12692a33cb761628d7392d6"
 
   prefix                               = "${local.infra.cluster_name}-r0-oc"
   ecs_cluster_id                       = local.infra.ecs_cluster_region_0_id
@@ -286,7 +286,7 @@ module "connectors_region_0" {
 ################################################################
 
 module "connectors_region_1" {
-  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/connectors?ref=ab171a87ec14658534bf7e518b64e06109033b0f"
+  source = "git::https://github.com/camunda/camunda-deployment-references.git//aws/modules/ecs/fargate/connectors?ref=3a69998472d04212a12692a33cb761628d7392d6"
 
   providers = {
     aws = aws.accepter
