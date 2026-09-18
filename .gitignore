@@ -237,3 +237,6 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/terraform,macos,windows,linux,intellij,visualstudiocode
+
+# Terraform build artifacts (e.g. Lambda zips)
+**/.build/

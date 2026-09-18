@@ -13,6 +13,11 @@ output "vpc_public_subnets" {
   description = "The private subnets of the VPC"
   value       = module.vpc.public_subnets
 }
+
+output "vpc_private_route_table_ids" {
+  description = "The private route table IDs of the VPC (needed for cross-region peering routes)"
+  value       = module.vpc.private_route_table_ids
+}
 output "ecs_cluster_id" {
   description = "The ID of the ECS Cluster"
   value       = aws_ecs_cluster.ecs.id

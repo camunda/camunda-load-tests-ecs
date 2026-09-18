@@ -1,0 +1,280 @@
+---
+name: Deploy/Destroy Dual-Region Load Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      benchmark_name:
+        description: 'Run name, without the dev- prefix (letters, numbers and hyphens; dev-<name> must be at most 14 chars, see aws/dual-region/scripts/validate-name.sh)'
+        required: false
+        type: string
+        default: 'camunda-dr'
+      database_engine:
+        description: 'Aurora database engine (must match the engine used to deploy when destroying)'
+        required: false
+        type: choice
+        options:
+          - postgresql
+          - mysql
+        default: postgresql
+      endpoint:
+        description: 'REST endpoint used by the load test, including scheme (for example http://host:80). Empty = resolve region_0 ALB from the infra state.'
+        required: false
+        type: string
+        default: ''
+      camunda_image:
+        description: 'Optional Camunda image URI (empty = app default, or the MySQL-capable image when database_engine is mysql)'
+        required: false
+        type: string
+        default: ''
+      starter_image:
+        description: 'Starter image URI'
+        required: false
+        type: string
+        default: 'registry.camunda.cloud/team-zeebe/starter:SNAPSHOT'
+      worker_image:
+        description: 'Worker image URI'
+        required: false
+        type: string
+        default: 'registry.camunda.cloud/team-zeebe/worker:SNAPSHOT'
+      destroy_only:
+        description: 'Only destroy infrastructure (do not deploy). Used by weekly rotation.'
+        required: false
+        type: boolean
+        default: false
+      destroy_vpc:
+        description: 'When destroying, also destroy the dual-region VPC/peering state'
+        required: false
+        type: boolean
+        default: true
+  workflow_call:
+    inputs:
+      benchmark_name:
+        description: 'Run name, without the dev- prefix (dev-<name> must be at most 14 chars)'
+        required: false
+        type: string
+        default: 'camunda-dr'
+      database_engine:
+        description: 'Aurora database engine (postgresql or mysql)'
+        required: false
+        type: string
+        default: postgresql
+      endpoint:
+        description: 'REST endpoint used by the load test. Empty = resolve region_0 ALB from the infra state.'
+        required: false
+        type: string
+        default: ''
+      camunda_image:
+        description: 'Optional Camunda image URI'
+        required: false
+        type: string
+        default: ''
+      starter_image:
+        description: 'Starter image URI'
+        required: false
+        type: string
+        default: 'registry.camunda.cloud/team-zeebe/starter:SNAPSHOT'
+      worker_image:
+        description: 'Worker image URI'
+        required: false
+        type: string
+        default: 'registry.camunda.cloud/team-zeebe/worker:SNAPSHOT'
+      destroy_only:
+        description: 'Only destroy infrastructure (do not deploy). Used by weekly rotation.'
+        required: false
+        type: boolean
+        default: false
+      destroy_vpc:
+        description: 'When destroying, also destroy the dual-region VPC/peering state'
+        required: false
+        type: boolean
+        default: true
+
+# Shared constant (not keyed on benchmark_name): with byo_vpc the VPC state
+# writes aws_route entries into the shared aws/stable private route tables,
+# keyed on the peer VPC CIDR, which is identical for every run name. Two
+# concurrent dual-region stack operations therefore collide with
+# RouteAlreadyExists regardless of their run names.
+concurrency:
+  group: dual-region-stack
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-west-1
+  # Fallbacks: `inputs` defaults are not applied on every invocation path, so
+  # effective values are resolved explicitly below.
+  DEFAULT_BENCHMARK_NAME: camunda-dr
+  DEFAULT_DATABASE_ENGINE: postgresql
+  DEFAULT_STARTER_IMAGE: registry.camunda.cloud/team-zeebe/starter:SNAPSHOT
+  DEFAULT_WORKER_IMAGE: registry.camunda.cloud/team-zeebe/worker:SNAPSHOT
+  # Camunda image containing the MySQL JDBC driver (see aws/dual-region/README.md).
+  MYSQL_CAMUNDA_IMAGE: 030846071718.dkr.ecr.eu-west-1.amazonaws.com/aurora-mysql-test/camunda:8.10-SNAPSHOT-mysql
+
+jobs:
+  deploy:
+    name: Deploy or destroy VPC, infra, app and load test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CI: true  # enables -auto-approve in shared.mk
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Import secrets from Vault
+        uses: hashicorp/vault-action@2c5827061f1ad91ca97897d6257ebe638e033699
+        with:
+          url: ${{ secrets.VAULT_ADDR }}
+          method: approle
+          roleId: ${{ secrets.VAULT_ROLE_ID }}
+          secretId: ${{ secrets.VAULT_SECRET_ID }}
+          secrets: |
+            secret/data/products/zeebe/ci/common AWS_CORE_FOUNDATION_ACCESS_KEY | AWS_ACCESS_KEY_ID;
+            secret/data/products/zeebe/ci/common AWS_CORE_FOUNDATION_SECRET_KEY | AWS_SECRET_ACCESS_KEY;
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~1.7.0'
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve effective inputs
+        id: cfg
+        env:
+          IN_BENCHMARK_NAME: ${{ inputs.benchmark_name }}
+          IN_DATABASE_ENGINE: ${{ inputs.database_engine }}
+          IN_CAMUNDA_IMAGE: ${{ inputs.camunda_image }}
+          IN_STARTER_IMAGE: ${{ inputs.starter_image }}
+          IN_WORKER_IMAGE: ${{ inputs.worker_image }}
+        run: |
+          set -euo pipefail
+          BENCHMARK_NAME="${IN_BENCHMARK_NAME:-}"
+          [ -n "$BENCHMARK_NAME" ] || BENCHMARK_NAME="$DEFAULT_BENCHMARK_NAME"
+          DATABASE_ENGINE="${IN_DATABASE_ENGINE:-}"
+          [ -n "$DATABASE_ENGINE" ] || DATABASE_ENGINE="$DEFAULT_DATABASE_ENGINE"
+          STARTER_IMAGE="${IN_STARTER_IMAGE:-}"
+          [ -n "$STARTER_IMAGE" ] || STARTER_IMAGE="$DEFAULT_STARTER_IMAGE"
+          WORKER_IMAGE="${IN_WORKER_IMAGE:-}"
+          [ -n "$WORKER_IMAGE" ] || WORKER_IMAGE="$DEFAULT_WORKER_IMAGE"
+          # MySQL needs an image carrying the MySQL JDBC driver.
+          CAMUNDA_IMAGE="${IN_CAMUNDA_IMAGE:-}"
+          if [ -z "$CAMUNDA_IMAGE" ] && [ "$DATABASE_ENGINE" = mysql ]; then
+            CAMUNDA_IMAGE="$MYSQL_CAMUNDA_IMAGE"
+          fi
+          {
+            echo "benchmark_name=${BENCHMARK_NAME}"
+            echo "cluster_name=dev-${BENCHMARK_NAME}"
+            echo "load_name=${BENCHMARK_NAME}-r0"
+            echo "infra_key=dual-region/infra/dev-${BENCHMARK_NAME}.tfstate"
+            echo "database_engine=${DATABASE_ENGINE}"
+            echo "camunda_image=${CAMUNDA_IMAGE}"
+            echo "starter_image=${STARTER_IMAGE}"
+            echo "worker_image=${WORKER_IMAGE}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Validate run name
+        run: aws/dual-region/scripts/validate-name.sh "${{ steps.cfg.outputs.cluster_name }}"
+
+      # Destroy order is load test → app → infra → vpc (see
+      # aws/dual-region/shared.mk and aws/dual-region/DEPLOYMENT_NOTES.md): the
+      # load generator points at the stack, so it goes first. The engine must
+      # match the one used to deploy (aws/dual-region/README.md).
+      - name: Destroy dual-region stack
+        if: ${{ inputs.destroy_only == true }}
+        env:
+          BN: ${{ steps.cfg.outputs.benchmark_name }}
+          LOAD_NAME: ${{ steps.cfg.outputs.load_name }}
+          INFRA_KEY: ${{ steps.cfg.outputs.infra_key }}
+          DATABASE_ENGINE: ${{ steps.cfg.outputs.database_engine }}
+          DESTROY_VPC: ${{ inputs.destroy_vpc }}
+        run: |
+          set -uo pipefail
+          RC=0
+          make -C aws/load_test/dev destroy BENCHMARK_NAME="$LOAD_NAME" \
+            DUAL_REGION=true \
+            DUAL_REGION_INFRA_STATE_KEY="$INFRA_KEY" || RC=1
+          make -C aws/dual-region/app/dev   destroy BENCHMARK_NAME="$BN" || RC=1
+          make -C aws/dual-region/infra/dev destroy BENCHMARK_NAME="$BN" \
+            DATABASE_ENGINE="$DATABASE_ENGINE" || RC=1
+          if [ "$DESTROY_VPC" = "true" ]; then
+            make -C aws/dual-region/vpc/dev destroy BENCHMARK_NAME="$BN" || RC=1
+            echo "Destroyed: dual-region VPC and peering"
+          else
+            echo "Preserved: dual-region VPC and peering"
+          fi
+          echo "Stable VPC states were not touched."
+          if [ "$RC" -ne 0 ]; then
+            echo "::error::Teardown of dev-${BN} reported errors — a costly dual-region stack may be leaking. Investigate today."
+            exit 1
+          fi
+
+      - name: Deploy VPC
+        if: ${{ inputs.destroy_only == false }}
+        working-directory: aws/dual-region/vpc/dev
+        run: make deploy BENCHMARK_NAME="${{ steps.cfg.outputs.benchmark_name }}"
+
+      - name: Deploy infra
+        if: ${{ inputs.destroy_only == false }}
+        working-directory: aws/dual-region/infra/dev
+        run: |
+          make deploy BENCHMARK_NAME="${{ steps.cfg.outputs.benchmark_name }}" \
+            DATABASE_ENGINE="${{ steps.cfg.outputs.database_engine }}"
+
+      - name: Deploy app
+        if: ${{ inputs.destroy_only == false }}
+        working-directory: aws/dual-region/app/dev
+        env:
+          CAMUNDA_IMAGE: ${{ steps.cfg.outputs.camunda_image }}
+        run: |
+          if [ -n "$CAMUNDA_IMAGE" ]; then
+            make deploy BENCHMARK_NAME="${{ steps.cfg.outputs.benchmark_name }}" \
+              CAMUNDA_IMAGE="$CAMUNDA_IMAGE"
+          else
+            make deploy BENCHMARK_NAME="${{ steps.cfg.outputs.benchmark_name }}"
+          fi
+
+      - name: Resolve admin credentials and REST endpoint
+        id: auth
+        if: ${{ inputs.destroy_only == false }}
+        # The infra deploy step already ran `init` (terraform -chdir=..), so
+        # aws/dual-region/infra/.terraform is bound to this run's state.
+        working-directory: aws/dual-region/infra
+        env:
+          IN_ENDPOINT: ${{ inputs.endpoint }}
+        run: |
+          set -euo pipefail
+          SECRET_ARN=$(terraform output -raw admin_user_password_secret_region_0_arn)
+          KMS_ARN=$(aws secretsmanager describe-secret --secret-id "$SECRET_ARN" --query KmsKeyId --output text)
+          REST_ADDRESS="${IN_ENDPOINT:-}"
+          if [ -z "$REST_ADDRESS" ]; then
+            REST_ADDRESS="http://$(terraform output -raw region_0_alb_endpoint):80"
+          fi
+          {
+            echo "secret_arn=${SECRET_ARN}"
+            echo "kms_arn=${KMS_ARN}"
+            echo "rest_address=${REST_ADDRESS}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Deploy load test over REST
+        if: ${{ inputs.destroy_only == false }}
+        working-directory: aws/load_test/dev
+        run: |
+          make deploy BENCHMARK_NAME="${{ steps.cfg.outputs.load_name }}" \
+            DUAL_REGION=true \
+            DUAL_REGION_INFRA_STATE_KEY="${{ steps.cfg.outputs.infra_key }}" \
+            REST_ADDRESS="${{ steps.auth.outputs.rest_address }}" \
+            PREFER_REST_OVER_GRPC=true \
+            STARTER_IMAGE="${{ steps.cfg.outputs.starter_image }}" \
+            WORKER_IMAGE="${{ steps.cfg.outputs.worker_image }}" \
+            CAMUNDA_AUTH_USERNAME=admin \
+            CAMUNDA_AUTH_PASSWORD_SECRET_ARN="${{ steps.auth.outputs.secret_arn }}" \
+            CAMUNDA_AUTH_PASSWORD_KMS_KEY_ARN="${{ steps.auth.outputs.kms_arn }}"
+
+      - name: Summary
+        if: ${{ always() && inputs.destroy_only == false }}
+        run: |
+          echo "🌍 Dual-region stack: ${{ steps.cfg.outputs.cluster_name }}"
+          echo "🗄️ Database engine: ${{ steps.cfg.outputs.database_engine }}"
+          echo "📦 Camunda image: ${{ steps.cfg.outputs.camunda_image || 'app default' }}"
+          echo "⚡ Load: ${{ steps.cfg.outputs.load_name }} (in-VPC, region_0)"

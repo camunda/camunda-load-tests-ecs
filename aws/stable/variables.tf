@@ -2,6 +2,12 @@
 #                        Global Options                        #
 ################################################################
 
+variable "region" {
+  type        = string
+  default     = "eu-west-1"
+  description = "AWS region to deploy this stable infrastructure into. Used for the dual-region secondary (us-east-1) instance; single-region tests keep the default."
+}
+
 variable "prefix" {
   type        = string
   description = "The prefix to use for names of resources"
