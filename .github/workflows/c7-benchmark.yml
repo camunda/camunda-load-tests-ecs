@@ -1,0 +1,169 @@
+---
+# Deploy, collect results from, or destroy a Camunda 7 benchmark (aws/c7_benchmark).
+# Images are built in camunda/camunda by the "Load test: C7 images" workflow.
+name: Deploy/Destroy C7 Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'deploy: create or update. results: write a results folder to S3 for the last results_duration seconds. destroy: delete everything incl. Aurora.'
+        required: true
+        type: choice
+        options:
+          - deploy
+          - results
+          - destroy
+        default: deploy
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - dev
+        default: dev
+      benchmark_name:
+        description: 'Benchmark name, e.g. growing-1 (prefix dev-<name>, max 20 chars). Empty uses dev-c7-1.'
+        required: false
+        type: string
+        default: ''
+      engine_image:
+        description: 'Engine image'
+        required: false
+        type: string
+        default: 'registry.camunda.cloud/team-zeebe/c7-benchmark-engine:7.24.0-SNAPSHOT'
+      load_tester_image:
+        description: 'Starter/worker image'
+        required: false
+        type: string
+        default: 'registry.camunda.cloud/team-zeebe/c7-benchmark-load-tester:7.24.0-SNAPSHOT'
+      engine_count:
+        description: 'Engines sharing the database (3 = same compute as the C8 ECS benchmark)'
+        required: false
+        type: number
+        default: 1
+      starter_rate:
+        description: 'Process instances started per second'
+        required: false
+        type: number
+        default: 150
+      history_level:
+        description: 'C7 history level'
+        required: false
+        type: choice
+        options:
+          - full
+          - audit
+          - activity
+          - none
+        default: full
+      aurora_instance_class:
+        description: 'Aurora instance class (non-burstable)'
+        required: false
+        type: string
+        default: 'db.r7g.large'
+      results_duration:
+        description: 'action=results: window in seconds, ending now'
+        required: false
+        type: number
+        default: 1800
+
+env:
+  AWS_REGION: eu-west-1
+  ENVIRONMENT: ${{ inputs.environment }}
+
+jobs:
+  c7:
+    name: C7 benchmark ${{ inputs.action }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write  # mint GitHub OIDC token for Vault JWT auth
+    env:
+      CI: true  # auto-approve in the Makefiles
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Import secrets from Vault
+        id: secrets
+        uses: hashicorp/vault-action@892a26828f195e65540a40b4768ae4571f51ebfc  # v4.0.0
+        with:
+          url: ${{ secrets.VAULT_ADDR }}
+          method: jwt
+          role: ${{ secrets.VAULT_JWT_ROLE }}
+          path: ${{ secrets.VAULT_JWT_PATH }}
+          jwtGithubAudience: ${{ secrets.VAULT_JWT_AUDIENCE }}
+          secrets: |
+            secret/data/products/zeebe/ci/common AWS_CORE_FOUNDATION_ACCESS_KEY | AWS_ACCESS_KEY_ID;
+            secret/data/products/zeebe/ci/common AWS_CORE_FOUNDATION_SECRET_KEY | AWS_SECRET_ACCESS_KEY;
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.7.0"
+
+      - name: Configure AWS CLI
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Make arguments
+        id: args
+        env:
+          BENCHMARK_NAME: ${{ inputs.benchmark_name }}
+        run: |
+          if [ -n "$BENCHMARK_NAME" ]; then
+            prefix="${ENVIRONMENT}-${BENCHMARK_NAME}"
+            echo "make_arg=BENCHMARK_NAME=${BENCHMARK_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            prefix="${ENVIRONMENT}-c7-1"
+            echo "make_arg=BENCHMARK_NUMBER=1" >> "$GITHUB_OUTPUT"
+          fi
+          if [ ${#prefix} -gt 20 ]; then
+            echo "::error::Prefix '${prefix}' has ${#prefix} chars, max 20."
+            exit 1
+          fi
+          echo "prefix=${prefix}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy
+        if: ${{ inputs.action == 'deploy' }}
+        working-directory: ./aws/c7_benchmark/${{ env.ENVIRONMENT }}
+        env:
+          ENGINE_IMAGE: ${{ inputs.engine_image }}
+          LOAD_TESTER_IMAGE: ${{ inputs.load_tester_image }}
+          ENGINE_COUNT: ${{ inputs.engine_count }}
+          STARTER_RATE: ${{ inputs.starter_rate }}
+          HISTORY_LEVEL: ${{ inputs.history_level }}
+          AURORA_INSTANCE_CLASS: ${{ inputs.aurora_instance_class }}
+        run: make deploy ${{ steps.args.outputs.make_arg }}
+
+      - name: Results
+        if: ${{ inputs.action == 'results' }}
+        working-directory: ./aws/c7_benchmark/${{ env.ENVIRONMENT }}
+        env:
+          DURATION: ${{ inputs.results_duration }}
+          RUN_ID: ${{ steps.args.outputs.prefix }}-${{ github.run_id }}
+        run: make results ${{ steps.args.outputs.make_arg }}
+
+      - name: Destroy
+        if: ${{ inputs.action == 'destroy' }}
+        working-directory: ./aws/c7_benchmark/${{ env.ENVIRONMENT }}
+        run: make destroy ${{ steps.args.outputs.make_arg }}
+
+      - name: Summary
+        if: ${{ success() }}
+        env:
+          PREFIX: ${{ steps.args.outputs.prefix }}
+          ACTION: ${{ inputs.action }}
+          RUN_ID: ${{ steps.args.outputs.prefix }}-${{ github.run_id }}
+        run: |
+          {
+            echo "## C7 benchmark ${ACTION}: ${PREFIX}"
+            echo ""
+            echo "- Prometheus namespace label: \`ecs-${PREFIX}-c7\`"
+            if [ "$ACTION" = "results" ]; then
+              echo "- Results: \`s3://camunda-c7-benchmark-results-${ENVIRONMENT}/c7/${RUN_ID}/\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
