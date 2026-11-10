@@ -28,4 +28,6 @@ There are different modules:
   - Container registry to pull images from
 - `monitoring` contains a grafana + prometheus services to use for metrics temporarily
 - `benchmark` contains code to start a camunda cluster
-- `load_test` contains code with the starter/worker to exercise load in the cluster (depends on `benchmark`) 
+- `load_test` contains code with the starter/worker to exercise load in the cluster (depends on `benchmark`)
+- `c7_benchmark` contains a self-contained Camunda 7 benchmark (Aurora, engine, starter, worker); depends only on `stable`
+- `c7_results` contains the long-lived S3 bucket for C7 benchmark results

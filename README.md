@@ -122,6 +122,13 @@ A scheduled workflow (`ecs-benchmark-weekly.yml`) runs every Monday at 06:00 UTC
 
 It can also be triggered manually via `workflow_dispatch`.
 
+### aws/c7_benchmark
+
+Camunda 7 benchmark: Aurora PostgreSQL, C7 engine, starter, external task workers and a
+postgres-exporter, plus a results task that writes a report per run to S3. Deployed with
+`cd aws/c7_benchmark/dev && make deploy` or the "Deploy/Destroy C7 Benchmark" workflow.
+See [aws/c7_benchmark/README.md](aws/c7_benchmark/README.md).
+
 #### Monitoring / Prometheus discovery
 
 Prometheus discovers benchmark targets **dynamically** via a Cloud Map discovery sidecar — no hardcoded DNS records in the monitoring stack. When a benchmark is deployed or destroyed, Prometheus picks up the change automatically within ~30 seconds.
