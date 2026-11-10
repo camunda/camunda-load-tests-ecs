@@ -13,4 +13,16 @@ scrape_configs:
       - files:
           - /etc/prometheus/targets/benchmarks.json
         refresh_interval: 30s
-
+  # C7 benchmarks (aws/c7_benchmark): engine, starter, workers, postgres-exporter.
+  # Targets come from the same discovery sidecar (c7.json). PostgreSQL metrics get the
+  # cnpg_ prefix so the C7 dashboard works for GKE (CNPG) and ECS (postgres-exporter).
+  - job_name: 'c7'
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/c7.json
+        refresh_interval: 30s
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "(c7_(table|db|wal|runtime|activity)_.*)"
+        target_label: __name__
+        replacement: "cnpg_$1"

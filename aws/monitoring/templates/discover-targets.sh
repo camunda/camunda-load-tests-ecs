@@ -21,6 +21,56 @@ mkdir -p "$(dirname "$TARGETS_FILE")"
 # Write an empty targets file immediately so Prometheus can start cleanly
 echo "[]" > "$TARGETS_FILE"
 
+# C7 benchmarks (aws/c7_benchmark): every service in namespaces ending in "-c7.service.local".
+# Written to a separate file and scraped by the "c7" job (metrics on /metrics).
+C7_TARGETS_FILE="${C7_TARGETS_FILE:-$(dirname "$TARGETS_FILE")/c7.json}"
+echo "[]" > "$C7_TARGETS_FILE"
+
+discover_c7() {
+  C7_TARGETS="["
+  C7_FIRST=true
+  while IFS="	" read -r NS_ID NS_NAME; do
+    [ -z "$NS_ID" ] && continue
+    case "$NS_NAME" in
+      *-c7.service.local) ;;
+      *) continue ;;
+    esac
+    if [ "$ENVIRONMENT" = "dev" ]; then
+      case "$NS_NAME" in dev-*) ;; *) continue ;; esac
+    else
+      case "$NS_NAME" in dev-*) continue ;; esac
+    fi
+    BENCHMARK=$(echo "$NS_NAME" | sed 's/\.service\.local$//')
+    SERVICES_FILE="${TMPDIR}/c7-services.txt"
+    aws servicediscovery list-services \
+      --filters Name=NAMESPACE_ID,Values="$NS_ID" \
+      --query 'Services[].[Id,Name]' --output text > "$SERVICES_FILE" 2>/dev/null || true
+    sed -i '/^None$/d' "$SERVICES_FILE"
+    while IFS="	" read -r SVC_ID SVC_NAME; do
+      [ -z "$SVC_ID" ] && continue
+      case "$SVC_NAME" in
+        postgres-exporter) SVC_PORT=9187; SVC_PATH=/metrics ;;
+        *) SVC_PORT=9600; SVC_PATH=/metrics ;;
+      esac
+      INSTANCES_FILE="${TMPDIR}/c7-instances.txt"
+      aws servicediscovery list-instances --service-id "$SVC_ID" \
+        --query 'Instances[].[Id,Attributes.AWS_INSTANCE_IPV4]' --output text > "$INSTANCES_FILE" 2>/dev/null || true
+      while IFS="	" read -r TASK_ID IP; do
+        [ -z "$IP" ] || [ "$IP" = "None" ] && continue
+        SHORT_TASK_ID=$(echo "$TASK_ID" | sed 's|.*/||')
+        if [ "$C7_FIRST" = true ]; then C7_FIRST=false; else C7_TARGETS="${C7_TARGETS},"; fi
+        C7_TARGETS="${C7_TARGETS}
+  {\"targets\": [\"${IP}:${SVC_PORT}\"], \"labels\": {\"namespace\": \"ecs-${BENCHMARK}\", \"cluster\": \"ecs\", \"service\": \"${SVC_NAME}\", \"pod\": \"${SVC_NAME}-${SHORT_TASK_ID}\", \"__metrics_path__\": \"${SVC_PATH}\"}}"
+      done < "$INSTANCES_FILE"
+    done < "$SERVICES_FILE"
+  done < "$NS_FILE"
+  C7_TARGETS="${C7_TARGETS}
+]"
+  echo "$C7_TARGETS" > "${C7_TARGETS_FILE}.tmp"
+  mv "${C7_TARGETS_FILE}.tmp" "$C7_TARGETS_FILE"
+  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) C7 targets written to ${C7_TARGETS_FILE}"
+}
+
 while true; do
   echo "--- Discovery cycle starting ---"
   echo "Region: ${AWS_DEFAULT_REGION:-<not set>}, Environment: ${ENVIRONMENT}"
@@ -143,5 +193,6 @@ while true; do
   mv "${TARGETS_FILE}.tmp" "$TARGETS_FILE"
 
   echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) Targets written to ${TARGETS_FILE}"
+  discover_c7
   sleep "$REFRESH_INTERVAL"
 done
